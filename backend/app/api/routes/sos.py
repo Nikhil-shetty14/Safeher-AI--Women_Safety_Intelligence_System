@@ -171,13 +171,10 @@ async def trigger_sos(
     except Exception as e:
         logger.error(f"SOS TRIGGER CRITICAL ERROR: {str(e)}")
         traceback.print_exc()
-        return {
-            "success": False,
-            "message": f"SOS trigger failed internally: {str(e)}",
-            "ai_fallback_used": True,
-            "sms_status": "failed",
-            "alert": None
-        }
+        raise HTTPException(
+            status_code=500,
+            detail=f"SOS trigger failed: {str(e)}"
+        )
 
 
 @router.post("/trigger-test")
@@ -254,7 +251,7 @@ async def trigger_sos_with_voice(
         try:
             lat = float(latitude)
             lng = float(longitude)
-        except:
+        except (ValueError, TypeError):
             lat, lng = 0.0, 0.0
 
         # Save audio using robust shutil method
@@ -446,7 +443,7 @@ async def upload_photo_evidence(
         try:
             lat = float(latitude)
             lng = float(longitude)
-        except:
+        except (ValueError, TypeError):
             lat, lng = 0.0, 0.0
 
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)

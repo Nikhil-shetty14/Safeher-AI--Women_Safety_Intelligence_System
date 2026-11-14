@@ -73,16 +73,20 @@ async def upload_profile_photo(
     current_user: dict = Depends(get_current_user)
 ):
     """Upload and set profile picture."""
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="File must be a valid image")
+
+    # Limit file size to settings.MAX_UPLOAD_SIZE (default 10MB)
+    content = await file.read()
+    if len(content) > settings.MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=400, detail=f"File exceeds maximum allowed size of {settings.MAX_UPLOAD_SIZE // (1024*1024)}MB")
 
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    file_ext = os.path.splitext(file.filename)[1]
+    file_ext = os.path.splitext(file.filename or "")[1] or ".jpg"
     filename = f"profile_{current_user['_id']}_{uuid.uuid4().hex[:8]}{file_ext}"
     file_path = os.path.join(settings.UPLOAD_DIR, filename)
 
     async with aiofiles.open(file_path, "wb") as out_file:
-        content = await file.read()
         await out_file.write(content)
 
     # Update user record with relative path
@@ -102,12 +106,26 @@ async def get_safety_history_summary(current_user: dict = Depends(get_current_us
     
     user_id = current_user["_id"]
     
-    alert_count = await alerts_col.count_documents({"user_id": user_id})
-    prediction_count = await ai_col.count_documents({"user_id": user_id})
+    alert_count = await alerts_col.count_documents({"user_id": user_id}) if alerts_col is not None else 0
+    prediction_count = await ai_col.count_documents({"user_id": user_id}) if ai_col is not None else 0
     
     # Get last 5 activities
-    cursor = logs_col.find({"user_id": user_id}).sort("timestamp", -1).limit(5)
-    recent_activities = await cursor.to_list(length=5)
+    recent_activities = []
+    if logs_col is not None:
+        cursor = logs_col.find({"user_id": user_id}).sort("timestamp", -1).limit(5)
+        recent_activities = await cursor.to_list(length=5)
+    
+    return {
+        "total_sos_alerts": alert_count,
+        "total_ai_checks": prediction_count,
+        "recent_activities": [
+            {
+                "action": a.get("action"),
+                "timestamp": a.get("timestamp"),
+                "details": a.get("details")
+            } for a in recent_activities
+        ]
+    }
     
     return {
         "total_sos_alerts": alert_count,

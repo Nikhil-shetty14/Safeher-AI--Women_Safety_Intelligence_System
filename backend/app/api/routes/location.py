@@ -5,7 +5,8 @@ from app.core.security import get_current_user, get_current_admin
 from app.core.database import get_collection
 from app.websockets.socket_manager import broadcast_to_admins, live_locations
 from app.utils.geocoding import reverse_geocode
-from datetime import datetime
+from datetime import datetime, timedelta
+import asyncio
 import uuid
 
 router = APIRouter(prefix="/api/location", tags=["GPS Tracking"])
@@ -21,8 +22,12 @@ async def update_location(
         user_id = str(current_user["_id"])
         location.user_id = user_id
 
-        # Reverse geocode asynchronously
-        geo = await reverse_geocode(location.latitude, location.longitude)
+        # Reverse geocode asynchronously with safety timeout
+        try:
+            geo = await asyncio.wait_for(reverse_geocode(location.latitude, location.longitude), timeout=3.0)
+        except Exception as e:
+            logger.warning(f"Reverse geocode timed out or failed in update_location: {e}")
+            geo = {"formatted_address": f"{location.latitude:.4f}, {location.longitude:.4f}"}
 
         # Store in DB with address
         collection = get_collection("location_history")
@@ -73,7 +78,6 @@ async def get_public_heatmap(current_user: dict = Depends(get_current_user)):
         return []
     
     # Just fetch active alerts in the last 24h
-    from datetime import datetime, timedelta
     since = datetime.utcnow() - timedelta(hours=24)
     cursor = alerts_col.find({
         "status": "active",
@@ -107,8 +111,12 @@ async def sos_live_location(
     try:
         user_id = str(current_user["_id"])
 
-        # Reverse geocode
-        geo = await reverse_geocode(location.latitude, location.longitude)
+        # Reverse geocode with timeout
+        try:
+            geo = await asyncio.wait_for(reverse_geocode(location.latitude, location.longitude), timeout=3.0)
+        except Exception as e:
+            logger.warning(f"Reverse geocode timed out or failed in sos_live_location: {e}")
+            geo = {"formatted_address": f"{location.latitude:.4f}, {location.longitude:.4f}"}
 
         now = datetime.utcnow()
 
@@ -180,7 +188,6 @@ async def get_location_history(
     if collection is None:
         return []
 
-    from datetime import timedelta
     since = datetime.utcnow() - timedelta(hours=hours)
     cursor = collection.find(
         {"user_id": current_user["_id"], "timestamp": {"$gte": since}}
@@ -209,7 +216,6 @@ async def get_user_location_history(
     if collection is None:
         return []
 
-    from datetime import timedelta
     since = datetime.utcnow() - timedelta(hours=hours)
     cursor = collection.find(
         {"user_id": user_id, "timestamp": {"$gte": since}}

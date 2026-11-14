@@ -35,10 +35,25 @@ async def analyze_text(
     if not data.input_text:
         raise HTTPException(status_code=400, detail="input_text is required")
 
-    analysis = await analyze_text_for_danger(data.input_text, data.location)
+    try:
+        analysis = await analyze_text_for_danger(data.input_text, data.location)
+    except Exception as e:
+        logger.error(f"Error analyzing text with LLM: {e}")
+        analysis = {
+            "danger_level": "medium",
+            "risk_score": 50,
+            "emotion": "neutral",
+            "trigger_emergency": False,
+            "recommended_action": "Stay aware of surroundings",
+            "detected_threats": ["Analysis service degraded"],
+            "summary": "Threat evaluation temporarily performed with heuristic fallback.",
+        }
 
     # Save prediction
-    await _save_prediction(current_user["_id"], data.input_text, None, analysis)
+    try:
+        await _save_prediction(current_user["_id"], data.input_text, None, analysis)
+    except Exception as e:
+        logger.warning(f"Failed to record prediction in DB: {e}")
 
     return {
         "user_id": current_user["_id"],
@@ -66,18 +81,35 @@ async def analyze_voice(
         content = await audio.read()
         await f.write(content)
 
-    transcript = await transcribe_audio(audio_path)
-    voice_result = await analyze_voice_stress(audio_path)
+    transcript = ""
+    try:
+        transcript = await transcribe_audio(audio_path)
+    except Exception as e:
+        logger.error(f"Audio transcription error: {e}")
+
+    voice_result = {"danger_level": "safe", "stress_score": 0}
+    try:
+        voice_result = await analyze_voice_stress(audio_path)
+    except Exception as e:
+        logger.error(f"Voice stress analysis error: {e}")
 
     # Also run text analysis on transcript
     text_result = {}
     if transcript:
-        text_result = await analyze_text_for_danger(transcript)
+        try:
+            text_result = await analyze_text_for_danger(transcript)
+        except Exception as e:
+            logger.error(f"Text analysis on transcript error: {e}")
+
+    DANGER_LEVELS = ["safe", "low", "medium", "high", "critical"]
+    def _danger_rank(val):
+        v = str(val or "safe").lower()
+        return DANGER_LEVELS.index(v) if v in DANGER_LEVELS else 0
 
     combined_danger = max(
         voice_result.get("danger_level", "safe").lower(),
         text_result.get("danger_level", "safe").lower(),
-        key=lambda x: ["safe", "low", "medium", "high", "critical"].index(x)
+        key=_danger_rank
     )
 
     await _save_prediction(current_user["_id"], transcript, audio_path, {
@@ -266,10 +298,16 @@ async def predict_route_safety(
     current_user: dict = Depends(get_current_user)
 ):
     """Predict and generate the safest route avoiding key threat areas."""
-    start_lat = data.get("start_latitude", 12.9716)
-    start_lng = data.get("start_longitude", 77.5946)
-    end_lat = data.get("end_latitude", 12.9756)
-    end_lng = data.get("end_longitude", 77.5996)
+    try:
+        start_lat = float(data.get("start_latitude", 12.9716))
+        start_lng = float(data.get("start_longitude", 77.5946))
+        end_lat = float(data.get("end_latitude", 12.9756))
+        end_lng = float(data.get("end_longitude", 77.5996))
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Invalid coordinates provided")
+
+    if not (-90 <= start_lat <= 90 and -90 <= end_lat <= 90 and -180 <= start_lng <= 180 and -180 <= end_lng <= 180):
+        raise HTTPException(status_code=400, detail="Coordinates out of valid range")
 
     # Fetch active SOS alerts to treat as dynamic danger zones
     danger_zones = []
@@ -351,8 +389,11 @@ async def predictive_guardian(
     nearby services, and Ollama/Phi-3 into a single predictive assessment.
     Broadcasts elevated-risk alerts to admins via Socket.IO in real time.
     """
-    lat = data.get("latitude", 0.0)
-    lng = data.get("longitude", 0.0)
+    try:
+        lat = float(data.get("latitude", 0.0))
+        lng = float(data.get("longitude", 0.0))
+    except (ValueError, TypeError):
+        lat, lng = 0.0, 0.0
     speed = data.get("speed", 0)
     heading = data.get("heading")
     planned_route = data.get("planned_route")  # list of {lat,lng} or None

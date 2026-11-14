@@ -43,4 +43,4 @@ async def generate_system_report(
         )
     except Exception as e:
         logger.error(f"Error generating PDF report: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to generate report: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to generate system report. Please verify date parameters.")

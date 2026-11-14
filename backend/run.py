@@ -7,10 +7,12 @@ import uvicorn
 from app.main import socket_app
 
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    is_debug = os.environ.get("DEBUG", "False").lower() in ("true", "1")
     uvicorn.run(
         "run:socket_app",
         host="0.0.0.0",
-        port=8000,
-        reload=True,
+        port=port,
+        reload=is_debug,
         log_level="info",
     )

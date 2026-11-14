@@ -115,57 +115,63 @@ async def login(credentials: UserLogin):
     Step 1 of Login: Verify credentials and send an OTP code
     to the registered phone number.
     """
-    # Normalize phone to canonical E.164 format
-    normalized_phone = format_phone_number(credentials.phone)
-
-    # 1. Authenticate user credentials first
-    user = await authenticate_user(normalized_phone, credentials.password)
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid phone number or password")
-    
-    if not user.get("is_active", True):
-        raise HTTPException(status_code=403, detail="Account is deactivated")
-
-    # 2. Trigger OTP dispatch to their registered phone number
     try:
-        otp_res = await send_otp(user["phone"])
+        # Normalize phone to canonical E.164 format
+        normalized_phone = format_phone_number(credentials.phone)
+
+        # 1. Authenticate user credentials first
+        user = await authenticate_user(normalized_phone, credentials.password)
+        if not user:
+            raise HTTPException(status_code=401, detail="Invalid phone number or password")
+        
+        if not user.get("is_active", True):
+            raise HTTPException(status_code=403, detail="Account is deactivated")
+
+        # 2. Trigger OTP dispatch to their registered phone number
+        try:
+            otp_res = await send_otp(user["phone"])
+        except Exception as e:
+            logger.error(f"Failed to send OTP during login: {e}")
+            raise HTTPException(status_code=500, detail="Failed to send verification code. Please try again.")
+
+        # 3. Create a pending login session in MongoDB
+        pending_collection = get_collection("pending_sessions")
+        if pending_collection is None:
+            raise HTTPException(status_code=503, detail="Database unavailable")
+
+        session_id = str(uuid.uuid4())
+        now = datetime.utcnow()
+
+        session_doc = {
+            "_id": session_id,
+            "action": "login",
+            "phone": user["phone"],
+            "user_id": user["_id"],
+            "verification_method": otp_res["method"],
+            "otp_code": otp_res.get("code"),
+            "verification_sid": otp_res.get("verification_sid"),
+            "attempts": 0,
+            "resends_count": 0,
+            "last_sent_at": now,
+            "created_at": now,
+            "expires_at": now + timedelta(minutes=5),
+        }
+
+        await pending_collection.insert_one(session_doc)
+
+        logger.info(f"2FA login session created for {credentials.phone} | Session: {session_id}")
+
+        return {
+            "status": "2fa_pending",
+            "session_id": session_id,
+            "phone": mask_phone_number(user["phone"]),
+            "dev_code": otp_res.get("code") if otp_res.get("method") == "mock" else None,
+        }
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to send OTP during login: {e}")
-        raise HTTPException(status_code=500, detail="Failed to send verification code. Please try again.")
-
-    # 3. Create a pending login session in MongoDB
-    pending_collection = get_collection("pending_sessions")
-    if pending_collection is None:
-        raise HTTPException(status_code=503, detail="Database unavailable")
-
-    session_id = str(uuid.uuid4())
-    now = datetime.utcnow()
-
-    session_doc = {
-        "_id": session_id,
-        "action": "login",
-        "phone": user["phone"],
-        "user_id": user["_id"],
-        "verification_method": otp_res["method"],
-        "otp_code": otp_res.get("code"),
-        "verification_sid": otp_res.get("verification_sid"),
-        "attempts": 0,
-        "resends_count": 0,
-        "last_sent_at": now,
-        "created_at": now,
-        "expires_at": now + timedelta(minutes=5),
-    }
-
-    await pending_collection.insert_one(session_doc)
-
-    logger.info(f"2FA login session created for {credentials.phone} | Session: {session_id}")
-
-    return {
-        "status": "2fa_pending",
-        "session_id": session_id,
-        "phone": mask_phone_number(user["phone"]),
-        "dev_code": otp_res.get("code") if otp_res.get("method") == "mock" else None,
-    }
+        logger.error(f"Unexpected error in login: {e}")
+        raise HTTPException(status_code=500, detail="Login service temporarily unavailable. Please try again.")
 
 
 @router.post("/verify-otp")
@@ -365,6 +371,8 @@ async def forgot_password(payload: ForgotPasswordRequest):
     Initiate password reset flow by sending OTP to the registered phone number.
     """
     users_collection = get_collection("users")
+    if users_collection is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
     
     try:
         normalized_phone = format_phone_number(payload.phone)
@@ -381,19 +389,21 @@ async def forgot_password(payload: ForgotPasswordRequest):
         raise HTTPException(status_code=403, detail="Account is deactivated")
 
     try:
-        otp_res = await send_otp(payload.phone)
+        otp_res = await send_otp(normalized_phone)
     except Exception as e:
         logger.error(f"Failed to send OTP during forgot password: {e}")
         raise HTTPException(status_code=500, detail="Failed to send verification code. Please try again.")
 
     pending_collection = get_collection("pending_sessions")
+    if pending_collection is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
     session_id = str(uuid.uuid4())
     now = datetime.utcnow()
 
     session_doc = {
         "_id": session_id,
         "action": "forgot_password",
-        "phone": payload.phone,
+        "phone": normalized_phone,
         "user_id": user["_id"],
         "verification_method": otp_res["method"],
         "otp_code": otp_res.get("code"),
@@ -406,12 +416,12 @@ async def forgot_password(payload: ForgotPasswordRequest):
     }
 
     await pending_collection.insert_one(session_doc)
-    logger.info(f"Forgot password session created for {payload.phone} | Session: {session_id}")
+    logger.info(f"Forgot password session created for {normalized_phone} | Session: {session_id}")
 
     return {
         "status": "2fa_pending",
         "session_id": session_id,
-        "phone": mask_phone_number(payload.phone),
+        "phone": mask_phone_number(normalized_phone),
     }
 
 
@@ -421,6 +431,8 @@ async def reset_password(payload: ResetPasswordRequest):
     Verify OTP and reset the password.
     """
     pending_collection = get_collection("pending_sessions")
+    if pending_collection is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
     
     try:
         session = await pending_collection.find_one({"_id": payload.session_id})
@@ -428,7 +440,7 @@ async def reset_password(payload: ResetPasswordRequest):
         logger.error(f"Database error during reset-password session lookup: {e}")
         raise HTTPException(status_code=503, detail="Database connection error. Please try again later.")
     
-    if not session or session["action"] != "forgot_password":
+    if not session or session.get("action") != "forgot_password":
         raise HTTPException(status_code=404, detail="Verification session not found or has expired.")
 
     if datetime.utcnow() > session["expires_at"]:

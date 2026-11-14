@@ -1,6 +1,8 @@
 import React, { useRef, useImperativeHandle, forwardRef, useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, ActivityIndicator, Text, StyleProp, ViewStyle } from 'react-native';
 import { WebView } from 'react-native-webview';
+
+const WebViewComponent: any = WebView;
 import { Colors } from '../constants/theme';
 import { MapboxStyleType, MAPBOX_STYLES } from '../api/mapbox';
 
@@ -119,14 +121,10 @@ export const SafeHerWebMap = forwardRef<SafeHerWebMapRef, SafeHerWebMapProps>(
       },
     }));
 
-    // Active tile URL (defaults to CARTO Dark for SafeHer cyber look)
-    const tileUrl = useMemo(() => {
-      const cfg = MAPBOX_STYLES[mapStyle];
-      if (cfg && cfg.urlTemplate) {
-        return cfg.urlTemplate;
-      }
-      return 'https://basemaps.cartocdn.com/rastertiles/dark_all/{z}/{x}/{y}.png';
-    }, [mapStyle]);
+    // Active tile URL & CSS filter resolved from current mapStyle theme
+    const currentTheme = MAPBOX_STYLES[mapStyle] || MAPBOX_STYLES.safeher;
+    const tileUrl = currentTheme.urlTemplate || 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
+    const cssFilter = currentTheme.cssFilter || 'none';
 
     // Send dynamic updates to WebView when props change
     useEffect(() => {
@@ -141,6 +139,8 @@ export const SafeHerWebMap = forwardRef<SafeHerWebMapRef, SafeHerWebMapProps>(
         safeTripMode,
         routePolyline,
         tileUrl,
+        cssFilter,
+        mapStyle,
       };
 
       const script = `if (window.handleNativeUpdate) {
@@ -158,6 +158,8 @@ export const SafeHerWebMap = forwardRef<SafeHerWebMapRef, SafeHerWebMapProps>(
       safeTripMode,
       routePolyline,
       tileUrl,
+      cssFilter,
+      mapStyle,
     ]);
 
     // HTML payload with Leaflet & Cyber Aesthetic
@@ -179,6 +181,11 @@ export const SafeHerWebMap = forwardRef<SafeHerWebMapRef, SafeHerWebMapProps>(
     /* Hide Leaflet default attribution & zoom controls for clean app chrome */
     .leaflet-control-attribution { display: none !important; }
     .leaflet-control-zoom { display: none !important; }
+
+    /* Smooth basemap theme transitions */
+    .leaflet-tile-pane {
+      transition: filter 0.25s ease-in-out;
+    }
 
     /* Custom Live User Beacon Marker */
     .user-marker {
@@ -293,6 +300,16 @@ export const SafeHerWebMap = forwardRef<SafeHerWebMapRef, SafeHerWebMapProps>(
     var routePolylineInner = null;
 
     var currentTileUrl = "${tileUrl}";
+    var currentCssFilter = "${cssFilter}";
+    var currentMapStyle = "${mapStyle}";
+
+    function createTileLayer(url) {
+      var options = { maxZoom: 19, keepBuffer: 4, updateWhenIdle: false };
+      if (url.indexOf('{s}') !== -1) {
+        options.subdomains = ['a', 'b', 'c', 'd'];
+      }
+      return L.tileLayer(url, options);
+    }
 
     function initMap() {
       try {
@@ -302,18 +319,13 @@ export const SafeHerWebMap = forwardRef<SafeHerWebMapRef, SafeHerWebMapProps>(
           preferCanvas: true
         }).setView([${initLat}, ${initLng}], ${initZoom});
 
-        tileLayer = L.tileLayer(currentTileUrl, {
-          maxZoom: 19,
-          subdomains: ['a', 'b', 'c', 'd']
-        }).addTo(map);
-
-        tileLayer.on('tileerror', function() {
-          // Fallback to OSM standard if tile provider fails
-          if (!tileLayer._isFallback) {
-            tileLayer._isFallback = true;
-            tileLayer.setUrl('https://tile.openstreetmap.org/{z}/{x}/{y}.png');
-          }
-        });
+        tileLayer = createTileLayer(currentTileUrl).addTo(map);
+        tileLayer.bringToBack();
+        var tilePane = document.querySelector('.leaflet-tile-pane');
+        if (tilePane && currentCssFilter && currentCssFilter !== 'none') {
+          tilePane.style.filter = currentCssFilter;
+          tilePane.style.webkitFilter = currentCssFilter;
+        }
 
         // Notify React Native that Map is Ready
         if (window.ReactNativeWebView) {
@@ -344,10 +356,29 @@ export const SafeHerWebMap = forwardRef<SafeHerWebMapRef, SafeHerWebMapProps>(
     window.handleNativeUpdate = function(data) {
       if (!map) return;
 
-      // 1. Switch Tile URL if changed
-      if (data.tileUrl && data.tileUrl !== currentTileUrl && tileLayer) {
+      // 1. Switch Tile CSS Filter dynamically
+      if (typeof data.cssFilter !== 'undefined' && data.cssFilter !== currentCssFilter) {
+        currentCssFilter = data.cssFilter || 'none';
+        var tilePane = document.querySelector('.leaflet-tile-pane');
+        if (tilePane) {
+          tilePane.style.filter = currentCssFilter;
+          tilePane.style.webkitFilter = currentCssFilter;
+        }
+      }
+
+      // 2. Switch Tile URL dynamically if changed
+      if (data.tileUrl && data.tileUrl !== currentTileUrl) {
         currentTileUrl = data.tileUrl;
-        tileLayer.setUrl(currentTileUrl);
+        if (tileLayer && map.hasLayer(tileLayer)) {
+          map.removeLayer(tileLayer);
+        }
+        tileLayer = createTileLayer(currentTileUrl).addTo(map);
+        tileLayer.bringToBack();
+        var tp = document.querySelector('.leaflet-tile-pane');
+        if (tp && currentCssFilter && currentCssFilter !== 'none') {
+          tp.style.filter = currentCssFilter;
+          tp.style.webkitFilter = currentCssFilter;
+        }
       }
 
       // 2. User Live Location Marker
@@ -529,7 +560,7 @@ export const SafeHerWebMap = forwardRef<SafeHerWebMapRef, SafeHerWebMapProps>(
 
     return (
       <View style={[styles.container, style]}>
-        <WebView
+        <WebViewComponent
           ref={webViewRef}
           originWhitelist={['*']}
           source={{ html: htmlContent }}
@@ -559,7 +590,7 @@ SafeHerWebMap.displayName = 'SafeHerWebMap';
 
 const styles = StyleSheet.create({
   container: {
-    ...StyleSheet.absoluteFillObject,
+    ...(StyleSheet.absoluteFill as any),
     backgroundColor: '#0A0614',
   },
   webview: {
@@ -567,7 +598,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#0A0614',
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...(StyleSheet.absoluteFill as any),
     backgroundColor: '#0A0614',
     alignItems: 'center',
     justifyContent: 'center',

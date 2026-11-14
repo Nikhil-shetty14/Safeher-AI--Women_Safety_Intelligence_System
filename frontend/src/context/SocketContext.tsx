@@ -63,7 +63,8 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
     socket.on("connect", () => {
       console.log(`[Socket] Connected successfully to ${currentUrl}`);
       setIsConnected(true);
-      socket.emit("register_user", { user_id: user.id, role: user.role });
+      const uid = user.id || (user as any)._id;
+      socket.emit("register_user", { user_id: uid, role: user.role });
     });
 
     socket.on("disconnect", (reason) => {
@@ -97,8 +98,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
   }, [isAuthenticated, user?.id, activeSocketUrl]);
 
   const sendLocation = (lat: number, lng: number, accuracy?: number) => {
+    const uid = user?.id || (user as any)?._id;
     socketRef.current?.emit("location_update", {
-      user_id: user?.id,
+      user_id: uid,
       latitude: lat,
       longitude: lng,
       accuracy,
@@ -106,8 +108,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   const emitSOS = (location: any, severity = "high") => {
+    const uid = user?.id || (user as any)?._id;
     socketRef.current?.emit("sos_triggered", {
-      user_id: user?.id,
+      user_id: uid,
       user_name: user?.name || "Emergency User",
       user_phone: user?.phone || "N/A",
       location,

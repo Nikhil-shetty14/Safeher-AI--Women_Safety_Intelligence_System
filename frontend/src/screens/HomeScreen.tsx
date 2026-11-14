@@ -362,11 +362,77 @@ export default function HomeScreen({ navigation }: any) {
              </View>
           )}
 
-          {/* AI Assistant & Check-In Timer */}
+          {/* ─── AI-POWERED "WALK WITH ME" FEATURED HERO CARD ─── */}
+          <View style={styles.walkWithMeHeroCard}>
+            <View style={styles.walkWithMeHeader}>
+              <View style={styles.walkWithMeHeaderLeft}>
+                <View style={styles.walkWithMeIconCircle}>
+                  <Ionicons name="walk" size={24} color="#10B981" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <View style={styles.walkWithMeTitleRow}>
+                    <Text style={styles.walkWithMeTitle}>AI Walk With Me™</Text>
+                    <View style={styles.walkWithMeBadge}>
+                      <Ionicons name="sparkles" size={10} color="#10B981" />
+                      <Text style={styles.walkWithMeBadgeText}>AI ESCORT</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.walkWithMeSub}>Live GPS Guardian • Deviation Shield • Safe Arrival</Text>
+                </View>
+              </View>
+            </View>
+
+            <Text style={styles.walkWithMeDesc}>
+              Walking alone at night? Activate your AI Companion for real-time illuminated corridor routing, behavioral deviation detection, and automated emergency escalation.
+            </Text>
+
+            {/* Feature Highlights Pills */}
+            <View style={styles.walkFeaturePillsRow}>
+              <View style={styles.walkFeaturePill}>
+                <Ionicons name="shield-checkmark" size={12} color="#10B981" />
+                <Text style={styles.walkFeaturePillText}>Deviation Shield</Text>
+              </View>
+              <View style={styles.walkFeaturePill}>
+                <Ionicons name="timer" size={12} color="#06B6D4" />
+                <Text style={styles.walkFeaturePillText}>SafeTimer Check-In</Text>
+              </View>
+              <View style={styles.walkFeaturePill}>
+                <Ionicons name="bulb" size={12} color="#F59E0B" />
+                <Text style={styles.walkFeaturePillText}>Illuminated Paths</Text>
+              </View>
+            </View>
+
+            {/* Quick Action Buttons */}
+            <View style={styles.walkActionBtnRow}>
+              <TouchableOpacity
+                style={styles.walkStartPrimaryBtn}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                  navigation.navigate('SafeTimer');
+                }}
+              >
+                <Ionicons name="walk" size={16} color="#FFFFFF" />
+                <Text style={styles.walkStartPrimaryBtnText}> Start Walk Guardian</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.walkMapSecondaryBtn}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  navigation.navigate('Map');
+                }}
+              >
+                <Ionicons name="map" size={15} color={Colors.primaryLight} />
+                <Text style={styles.walkMapSecondaryBtnText}> Corridor Map</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* AI Assistant & Quick Features Grid */}
           <View style={styles.quickGrid}>
             {[
               { id: 'chat', icon: 'chatbubbles', title: 'AI Assistant', sub: 'Live Guidance', color: Colors.success, screen: 'Chat' },
-              { id: 'timer', icon: 'timer', title: 'Safe Timer', sub: 'Auto Check-in', color: '#06B6D4', screen: 'SafeTimer' },
+              { id: 'timer', icon: 'walk', title: 'Walk With Me', sub: 'AI Companion', color: '#10B981', screen: 'SafeTimer' },
               { id: 'map', icon: 'map', title: 'Safe Route Map', sub: 'Live Tracking', color: Colors.primary, screen: 'Map' },
               { id: 'audio', icon: 'recording', title: 'Audio Evidence', sub: 'Start Record', color: Colors.warning, screen: 'SOS' },
               { id: 'complaint', icon: 'document-text', title: 'File Complaint', sub: 'Report Incident', color: '#8b5cf6', screen: 'SubmitComplaint' },
@@ -482,6 +548,142 @@ const styles = StyleSheet.create({
   systemStatusRow: { flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 12, marginTop: 30, paddingHorizontal: Spacing.lg },
   sysTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.backgroundSecondary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, gap: 6, borderWidth: 1, borderColor: Colors.cardBorder },
   sysTagText: { fontSize: 11, color: Colors.textSecondary, fontWeight: '600' },
+
+  /* ── AI Walk With Me Featured Card Styles ── */
+  walkWithMeHeroCard: {
+    marginHorizontal: Spacing.lg,
+    marginBottom: Spacing.lg,
+    backgroundColor: 'rgba(26, 16, 51, 0.95)',
+    borderRadius: BorderRadius.xl,
+    padding: Spacing.md,
+    borderWidth: 1.5,
+    borderColor: 'rgba(16, 185, 129, 0.45)',
+    ...Shadows.card,
+  },
+  walkWithMeHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  walkWithMeHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+  },
+  walkWithMeIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    borderWidth: 1.5,
+    borderColor: '#10B981',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  walkWithMeTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  walkWithMeTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    letterSpacing: 0.3,
+  },
+  walkWithMeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.4)',
+  },
+  walkWithMeBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#10B981',
+    letterSpacing: 0.5,
+  },
+  walkWithMeSub: {
+    fontSize: 11,
+    color: '#A78BFA',
+    marginTop: 2,
+    fontWeight: '600',
+  },
+  walkWithMeDesc: {
+    fontSize: 12,
+    color: '#CBD5E1',
+    lineHeight: 18,
+    marginBottom: 12,
+  },
+  walkFeaturePillsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 14,
+  },
+  walkFeaturePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+  },
+  walkFeaturePillText: {
+    fontSize: 10,
+    color: '#E2E8F0',
+    fontWeight: '600',
+  },
+  walkActionBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  walkStartPrimaryBtn: {
+    flex: 1.4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#059669',
+    paddingVertical: 11,
+    borderRadius: BorderRadius.md,
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  walkStartPrimaryBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+  walkMapSecondaryBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
+    paddingVertical: 11,
+    borderRadius: BorderRadius.md,
+    borderWidth: 1,
+    borderColor: 'rgba(139, 92, 246, 0.4)',
+  },
+  walkMapSecondaryBtnText: {
+    color: '#A78BFA',
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });
 
 // ── AI Safety Guardian Styles ──────────────────

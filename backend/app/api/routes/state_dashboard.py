@@ -216,14 +216,11 @@ async def get_admin_rankings(current_admin: dict = Depends(get_current_admin)):
             ]
 
             if districts_in_div:
-                div_dist_pattern = re.compile(
-                    r"^(" + "|".join(re.escape(d) for d in districts_in_div) + r")( District)?$",
-                    re.IGNORECASE
-                )
-                admin_or.append({"location.district": div_dist_pattern})
-                admin_or.append({"district": div_dist_pattern})
-                comp_or.append({"district": div_dist_pattern})
-                comp_or.append({"location.district": div_dist_pattern})
+                div_dist_regex = r"^(" + "|".join(re.escape(d) for d in districts_in_div) + r")( District)?$"
+                admin_or.append({"location.district": {"$regex": div_dist_regex, "$options": "i"}})
+                admin_or.append({"district": {"$regex": div_dist_regex, "$options": "i"}})
+                comp_or.append({"district": {"$regex": div_dist_regex, "$options": "i"}})
+                comp_or.append({"location.district": {"$regex": div_dist_regex, "$options": "i"}})
 
             # If regional admin also has an assigned district, match it as well
             if district and district not in districts_in_div:

@@ -601,11 +601,11 @@ async def change_admin_status(target_id: str, active: bool, current_admin: dict 
     await log_admin_action(current_admin["_id"], current_admin.get("email", ""), "change_status", target_id, f"Set active={active}")
     return {"success": True, "message": f"Admin status updated to {'active' if active else 'inactive'}"}
 
-class ResetPasswordRequest(BaseModel):
+class AdminResetPasswordRequest(BaseModel):
     new_password: str
 
 @router.put("/management/{target_id}/reset-password")
-async def reset_admin_password(target_id: str, payload: ResetPasswordRequest, current_admin: dict = Depends(get_current_admin)):
+async def reset_admin_password(target_id: str, payload: AdminResetPasswordRequest, current_admin: dict = Depends(get_current_admin)):
     """Reset password for a sub-admin manually."""
     if current_admin.get("role") not in ["admin", "super_admin"]:
         raise HTTPException(status_code=403, detail="Unauthorized")

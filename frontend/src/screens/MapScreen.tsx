@@ -1046,32 +1046,50 @@ function MapScreen() {
 
         {/* Route Planner or Active Trip Mode */}
         {!safeTripMode ? (
-          <View style={styles.plannerInputRow}>
-            <TextInput
-              placeholder="Search destination or address..."
-              placeholderTextColor="#64748b"
-              style={styles.plannerTextInput}
-              value={destinationInput}
-              onChangeText={handleSearchInputChange}
-              onSubmitEditing={handleDestinationSubmit}
-              returnKeyType="search"
-            />
-            <TouchableOpacity style={styles.planRouteBtn} onPress={handleDestinationSubmit}>
-              <Ionicons name="navigate" size={15} color="#fff" />
-              <Text style={styles.planRouteBtnText}> Plan Route</Text>
-            </TouchableOpacity>
+          <View>
+            <View style={styles.walkCompanionHeaderRow}>
+              <View style={styles.walkBadgeRow}>
+                <Ionicons name="walk" size={15} color="#10b981" />
+                <Text style={styles.walkBadgeTitle}>AI "Walk With Me" Route Escort</Text>
+              </View>
+              <View style={styles.walkPillBadge}>
+                <Ionicons name="sparkles" size={10} color="#10b981" />
+                <Text style={styles.walkPillBadgeText}>LIVE SHIELD</Text>
+              </View>
+            </View>
+            <View style={styles.plannerInputRow}>
+              <TextInput
+                placeholder="Search walking destination..."
+                placeholderTextColor="#64748b"
+                style={styles.plannerTextInput}
+                value={destinationInput}
+                onChangeText={handleSearchInputChange}
+                onSubmitEditing={handleDestinationSubmit}
+                returnKeyType="search"
+              />
+              <TouchableOpacity style={styles.planRouteBtn} onPress={handleDestinationSubmit}>
+                <Ionicons name="walk" size={16} color="#fff" />
+                <Text style={styles.planRouteBtnText}> Walk With Me</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <View style={styles.activeTripContainer}>
             <View style={styles.activeTripInfoRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.activeTripLabel}>Active Safe Trip Navigation</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <Text style={styles.activeTripLabel}>🚶 AI "Walk With Me" Escort</Text>
+                  <View style={styles.activeEscortLiveBadge}>
+                    <View style={styles.liveEscortDot} />
+                    <Text style={styles.liveEscortText}>ACTIVE</Text>
+                  </View>
+                </View>
                 <Text style={styles.activeTripDest} numberOfLines={1}>
                   {activeDestinationTitle}
                 </Text>
                 {routeDistanceText ? (
                   <Text style={styles.activeTripEta}>
-                    🚶 {routeDistanceText} • ~{routeEtaMinutes} mins walk
+                    🚶 {routeDistanceText} • ~{routeEtaMinutes} mins safe walking path
                   </Text>
                 ) : null}
               </View>
@@ -1084,13 +1102,15 @@ function MapScreen() {
             {/* Deviation Simulator Switch */}
             <View style={styles.simulatorRow}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.simTitle}>Simulate Route Deviation</Text>
-                <Text style={styles.simSub}>Test AI behavioral risk scaling & alerts</Text>
+                <Text style={styles.simTitle}>Route Deviation Shield</Text>
+                <Text style={styles.simSub}>
+                  {deviationDetected ? `⚠️ Alert: ${deviationMeters}m off safe corridor!` : 'Normal corridor • continuous AI scan'}
+                </Text>
               </View>
               <Switch
                 value={deviationSimulated}
                 onValueChange={handleSimulateDeviation}
-                thumbColor={deviationSimulated ? '#ef4444' : '#94a3b8'}
+                thumbColor={deviationSimulated ? '#ef4444' : '#10b981'}
                 trackColor={{ false: '#334155', true: '#ef4444' }}
               />
             </View>
@@ -1105,7 +1125,7 @@ function MapScreen() {
                 initLocation();
               }}
             >
-              <Text style={styles.endJourneyBtnText}>End Journey Mode</Text>
+              <Text style={styles.endJourneyBtnText}>End Walk Mode</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1673,7 +1693,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   plannerTextInput: {
-    flex: 1.3,
+    flex: 1.2,
     height: 42,
     backgroundColor: 'rgba(255, 255, 255, 0.04)',
     borderRadius: BorderRadius.md,
@@ -1684,18 +1704,79 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSizeMD,
   },
   planRouteBtn: {
-    flex: 1,
+    flex: 1.1,
     height: 42,
-    backgroundColor: Colors.primary,
+    backgroundColor: '#059669',
     borderRadius: BorderRadius.md,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   planRouteBtnText: {
     color: '#fff',
     fontSize: Typography.fontSizeSM,
     fontWeight: Typography.fontWeightBold,
+  },
+  walkCompanionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  walkBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  walkBadgeTitle: {
+    fontSize: 11,
+    color: '#10b981',
+    fontWeight: Typography.fontWeightExtrabold,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
+  walkPillBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  walkPillBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    color: '#10b981',
+    letterSpacing: 0.5,
+  },
+  activeEscortLiveBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(16, 185, 129, 0.2)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  liveEscortDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10b981',
+  },
+  liveEscortText: {
+    fontSize: 8,
+    fontWeight: '800',
+    color: '#10b981',
+    letterSpacing: 0.5,
   },
   activeTripContainer: {
     borderTopWidth: 1,

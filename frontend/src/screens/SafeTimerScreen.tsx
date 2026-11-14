@@ -135,7 +135,7 @@ export default function SafeTimerScreen({ navigation }: any) {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Ionicons name="arrow-back" size={24} color={Colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>⏱️ Safe Timer</Text>
+        <Text style={styles.headerTitle}>🚶‍♀️ AI "Walk With Me" SafeTimer</Text>
         <View style={{ width: 24 }} />
       </View>
 
@@ -145,23 +145,23 @@ export default function SafeTimerScreen({ navigation }: any) {
           <View style={styles.setupCard}>
             <View style={styles.infoBox}>
               <Ionicons name="shield-checkmark" size={28} color={Colors.primary} />
-              <Text style={styles.infoTitle}>How It Works</Text>
+              <Text style={styles.infoTitle}>AI "Walk With Me" Companion</Text>
               <Text style={styles.infoText}>
-                Set your destination and travel time. If you don't mark yourself safe when the timer
-                runs out, <Text style={{ color: Colors.danger, fontWeight: '700' }}>SOS is automatically sent</Text> to your emergency contacts.
+                Set your walking destination and expected travel time. SafeHer AI companion continuously monitors your journey countdown. If you don't confirm safe arrival before the timer
+                runs out, <Text style={{ color: Colors.danger, fontWeight: '700' }}>SOS with live GPS is automatically dispatched</Text> to your emergency contacts.
               </Text>
             </View>
 
-            <Text style={styles.label}>Where are you going?</Text>
+            <Text style={styles.label}>Where are you walking to?</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="e.g. Home, College, MG Road..."
+              placeholder="e.g. Home, Hostel, Metro Station, MG Road..."
               placeholderTextColor={Colors.textMuted}
               value={destination}
               onChangeText={setDestination}
             />
 
-            <Text style={styles.label}>Expected travel time</Text>
+            <Text style={styles.label}>Expected walking duration</Text>
             <View style={styles.minuteRow}>
               {[5, 10, 15, 20, 30, 45, 60].map((m) => (
                 <TouchableOpacity
@@ -177,8 +177,8 @@ export default function SafeTimerScreen({ navigation }: any) {
             </View>
 
             <TouchableOpacity style={styles.startBtn} onPress={startTimer}>
-              <Ionicons name="shield-checkmark" size={22} color={Colors.white} />
-              <Text style={styles.startBtnText}>  Start Safe Timer</Text>
+              <Ionicons name="walk" size={22} color={Colors.white} />
+              <Text style={styles.startBtnText}>  Start AI Walk Companion</Text>
             </TouchableOpacity>
           </View>
         ) : (

@@ -143,7 +143,7 @@ async def submit_complaint(
         return formatted_complaint
     except Exception as e:
         logger.error(f"Error submitting complaint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Failed to submit complaint. Please try again later.")
 
 @router.get("/my-complaints", response_model=List[ComplaintResponse])
 async def get_my_complaints(current_user: dict = Depends(get_current_user)):
@@ -177,7 +177,8 @@ async def update_complaint_status(
     if complaints_col is None:
         raise HTTPException(status_code=503, detail="Database unavailable")
 
-    update_dict = {k: v for k, v in update_data.dict().items() if v is not None}
+    dump_data = update_data.model_dump(exclude_unset=True) if hasattr(update_data, "model_dump") else update_data.dict(exclude_unset=True)
+    update_dict = {k: v for k, v in dump_data.items() if v is not None}
     if not update_dict:
         raise HTTPException(status_code=400, detail="No data to update")
 

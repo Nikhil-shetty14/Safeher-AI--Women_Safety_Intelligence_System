@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Body
 from typing import List, Dict, Any
-from app.core.security import get_current_admin
+from app.core.security import get_current_admin, log_admin_action, get_password_hash
 from app.core.database import get_collection
+from loguru import logger
 import uuid
 from datetime import datetime
-from app.core.security import get_password_hash
 
 router = APIRouter(prefix="/api/admin/import", tags=["Admin Import"])
 
@@ -49,14 +49,23 @@ async def import_users(
                 "phone": phone or "",
                 "role": "user",
                 "is_active": True,
-                "hashed_password": get_password_hash("SafeHer@123"), # Default password
+                "requires_password_change": True,
+                "hashed_password": get_password_hash("SafeHer@123"),  # Temporary initial password
                 "created_at": now,
                 "updated_at": now
             }
             await users_col.insert_one(user_doc)
             inserted_count += 1
         except Exception as e:
+            logger.error(f"Error processing row {row.get('email', 'unknown')}: {e}")
             errors.append(f"Error processing row {row.get('email', 'unknown')}: {str(e)}")
+            
+    await log_admin_action(
+        current_admin["_id"],
+        current_admin.get("email", ""),
+        "import_users",
+        details=f"Imported {inserted_count} users with {len(errors)} errors"
+    )
             
     return {
         "success": True,

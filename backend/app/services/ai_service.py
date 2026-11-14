@@ -2,8 +2,9 @@ import httpx
 import urllib.parse
 import asyncio
 from typing import List, Dict
+from loguru import logger
 from app.core.config import settings
-from app.ai.llm_engine import _call_ollama, logger
+from app.ai.llm_engine import _call_ollama
 
 def get_fallback_services(latitude: float, longitude: float) -> List[Dict]:
     """Generates guaranteed verified safety markers around the user's location."""
@@ -48,6 +49,17 @@ def get_fallback_services(latitude: float, longitude: float) -> List[Dict]:
 
 # Helper to fetch raw OSM data via Overpass API with strict timeout
 async def fetch_osm_services(latitude: float, longitude: float, radius: int = 3500) -> List[Dict]:
+    # Input validation for lat/lng
+    if not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+        logger.error(f"Invalid coordinate types: lat={type(latitude)}, lng={type(longitude)}")
+        return get_fallback_services(0.0, 0.0)
+    if not (-90 <= latitude <= 90):
+        logger.error(f"Latitude out of range: {latitude}")
+        return get_fallback_services(latitude, longitude)
+    if not (-180 <= longitude <= 180):
+        logger.error(f"Longitude out of range: {longitude}")
+        return get_fallback_services(latitude, longitude)
+
     query = f"[out:json][timeout:5];(node[\"amenity\"=\"police\"](around:{radius},{latitude},{longitude});node[\"amenity\"=\"hospital\"](around:{radius},{latitude},{longitude});node[\"amenity\"=\"pharmacy\"](around:{radius},{latitude},{longitude}););out body 20;"
     url = f"https://overpass-api.de/api/interpreter?data={urllib.parse.quote(query)}"
     try:
@@ -90,6 +102,14 @@ async def fetch_osm_services(latitude: float, longitude: float, radius: int = 35
 
 # Main function to get ranked services
 async def get_ranked_services(latitude: float, longitude: float) -> List[Dict]:
+    # Input validation for lat/lng
+    if not isinstance(latitude, (int, float)) or not isinstance(longitude, (int, float)):
+        logger.error(f"Invalid coordinate types for get_ranked_services: lat={type(latitude)}, lng={type(longitude)}")
+        return get_fallback_services(0.0, 0.0)
+    if not (-90 <= latitude <= 90) or not (-180 <= longitude <= 180):
+        logger.error(f"Coordinates out of range: lat={latitude}, lng={longitude}")
+        return get_fallback_services(latitude, longitude)
+
     try:
         services = await fetch_osm_services(latitude, longitude)
         return services

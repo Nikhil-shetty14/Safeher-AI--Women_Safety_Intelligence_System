@@ -4,6 +4,7 @@ from app.core.security import get_current_user
 from app.core.database import get_collection
 from datetime import datetime
 import uuid
+from loguru import logger
 
 router = APIRouter(prefix="/api/contacts", tags=["Emergency Contacts"])
 
@@ -59,6 +60,7 @@ async def get_contacts(current_user: dict = Depends(get_current_user)):
         contacts = await cursor.to_list(length=10)
         return [_format_contact(c) for c in contacts]
     except Exception as e:
+        logger.error(f"Error fetching contacts for user {current_user.get('_id')}: {e}")
         return []
 
 
@@ -77,7 +79,8 @@ async def update_contact(
     if not contact:
         raise HTTPException(status_code=404, detail="Contact not found")
 
-    update_dict = {k: v for k, v in update_data.dict().items() if v is not None}
+    dump_data = update_data.model_dump(exclude_unset=True) if hasattr(update_data, "model_dump") else update_data.dict(exclude_unset=True)
+    update_dict = {k: v for k, v in dump_data.items() if v is not None}
     await collection.update_one({"_id": contact_id}, {"$set": update_dict})
     updated = await collection.find_one({"_id": contact_id})
     return _format_contact(updated)

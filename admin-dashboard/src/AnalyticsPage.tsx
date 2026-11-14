@@ -208,7 +208,7 @@ export default function AnalyticsPage() {
           <h3 style={{ ...s.cardTitle, marginBottom: 16 }}>Alert Severity Distribution</h3>
           <ResponsiveContainer width="100%" height={200}>
             <PieChart>
-              <Pie data={PIE_DATA} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+              <Pie data={PIE_DATA} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
                 labelLine={false} style={{ fontSize: 10 }}>
                 {PIE_DATA.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
               </Pie>

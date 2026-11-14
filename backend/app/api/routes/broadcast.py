@@ -46,15 +46,25 @@ async def create_new_broadcast(
 
         dt_scheduled = None
         if scheduled_for:
-            # Need to parse ISO string
-            dt_scheduled = datetime.fromisoformat(scheduled_for.replace("Z", "+00:00"))
+            try:
+                # Need to parse ISO string
+                dt_scheduled = datetime.fromisoformat(scheduled_for.replace("Z", "+00:00"))
+            except Exception:
+                raise HTTPException(status_code=400, detail="Invalid scheduled_for ISO datetime format")
+
+        try:
+            b_type = BroadcastType(type)
+            b_priority = BroadcastPriority(priority)
+            b_target = BroadcastTargetType(target_type)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=f"Invalid broadcast attribute: {ve}")
 
         data = BroadcastCreate(
             title=title,
             body=body,
-            type=BroadcastType(type),
-            priority=BroadcastPriority(priority),
-            target_type=BroadcastTargetType(target_type),
+            type=b_type,
+            priority=b_priority,
+            target_type=b_target,
             target_location=target_location,
             scheduled_for=dt_scheduled,
             image_url=image_url
@@ -63,8 +73,11 @@ async def create_new_broadcast(
         doc = await create_broadcast(data)
         doc["id"] = doc.pop("_id")
         return doc
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error creating broadcast: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create broadcast notification")
 
 
 @router.get("/", response_model=List[BroadcastResponse])

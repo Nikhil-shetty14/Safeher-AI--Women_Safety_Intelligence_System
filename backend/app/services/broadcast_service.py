@@ -62,7 +62,9 @@ async def get_target_users(target_type: str, target_location: str = None) -> Lis
         # Simple implementation: target by text search in user profile addresses or known locations
         # A more robust solution would use geospatial queries, but for now we regex match the district/taluk.
         import re
-        pattern = re.compile(target_location, re.IGNORECASE)
+        # Sanitize user input to prevent ReDoS attacks
+        sanitized_location = re.escape(target_location)
+        pattern = re.compile(sanitized_location, re.IGNORECASE)
         users = await users_col.find({"$or": [
             {"address": {"$regex": pattern}},
             {"city": {"$regex": pattern}},
@@ -75,7 +77,12 @@ async def get_target_users(target_type: str, target_location: str = None) -> Lis
 
 async def process_broadcast(broadcast: dict):
     logger.info(f"Processing broadcast {broadcast['_id']}")
-    users = await get_target_users(broadcast.get("target_type"), broadcast.get("target_location"))
+    try:
+        users = await get_target_users(broadcast.get("target_type"), broadcast.get("target_location"))
+    except Exception as e:
+        logger.error(f"Failed to get target users for broadcast {broadcast['_id']}: {e}")
+        await update_broadcast_status(broadcast["_id"], BroadcastStatus.completed.value)
+        return
     
     if not users:
         logger.warning(f"No target users found for broadcast {broadcast['_id']}")

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, FlatList, StatusBar, TouchableOpacity, Activity
 import { Ionicons } from '@expo/vector-icons';
 import { sosAPI } from '../api/client';
 import { Colors, Typography, Spacing, BorderRadius, getSeverityColor } from '../constants/theme';
+import { AudioEvidencePlayer } from '../components/AudioEvidencePlayer';
 
 export default function AlertHistoryScreen({ navigation }: any) {
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -21,6 +22,9 @@ export default function AlertHistoryScreen({ navigation }: any) {
 
   const renderAlert = ({ item }: { item: any }) => {
     const color = getSeverityColor(item.severity);
+    const hasAudio = Boolean(item.audio_url || item.audio_stream_url || item.audio_file_path || item.trigger_type === 'voice_intelligence');
+    const audioUri = item.audio_url || item.audio_stream_url || (item.id ? `/api/sos/audio/${item.id}` : null);
+
     return (
       <View style={[styles.card, { borderLeftColor: color }]}>
         <View style={styles.cardHeader}>
@@ -43,6 +47,18 @@ export default function AlertHistoryScreen({ navigation }: any) {
         {item.message && <Text style={styles.message} numberOfLines={2}>"{item.message}"</Text>}
         {item.ai_analysis?.danger_level && (
           <Text style={styles.aiNote}>🤖 AI: {item.ai_analysis.danger_level} risk — {item.ai_analysis.suggested_action?.substring(0, 60)}...</Text>
+        )}
+
+        {/* Audio Evidence Player */}
+        {hasAudio && (
+          <AudioEvidencePlayer
+            audioUri={audioUri}
+            title="Emergency Audio Recording"
+            transcript={item.ai_analysis?.transcript || item.ai_analysis?.transcription}
+            stressScore={item.ai_analysis?.stress_score}
+            threatLevel={item.ai_analysis?.danger_level || item.severity}
+            createdAt={item.created_at}
+          />
         )}
       </View>
     );

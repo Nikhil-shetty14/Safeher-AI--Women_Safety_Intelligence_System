@@ -15,7 +15,7 @@ import {
   Platform,
   Dimensions,
 } from 'react-native';
-import MapView, { PROVIDER_GOOGLE, Marker, UrlTile } from 'react-native-maps';
+import MapView, { Marker, Circle } from 'react-native-maps';
 import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
 import * as Location from 'expo-location';
@@ -29,6 +29,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { Colors, Typography, Spacing, BorderRadius, Shadows, SAFEHER_MAP_STYLE } from '../constants/theme';
 import { SafeHerWebMap } from '../components/SafeHerWebMap';
+import { AudioEvidencePlayer } from '../components/AudioEvidencePlayer';
 
 const { width } = Dimensions.get('window');
 const LOCATION_TASK_NAME = 'SOS_LOCATION_TRACKING';
@@ -74,6 +75,7 @@ export default function SOSScreen({ navigation, route }: any) {
   const [isVoiceListening, setIsVoiceListening] = useState(false);
   const [voiceCountdown, setVoiceCountdown] = useState(5);
   const [isUploadingVoice, setIsUploadingVoice] = useState(false);
+  const [capturedAudioUri, setCapturedAudioUri] = useState<string | null>(null);
 
   // Refs & Animations
   const holdAnim = useRef(new Animated.Value(0)).current;
@@ -396,6 +398,7 @@ export default function SOSScreen({ navigation, route }: any) {
       await recorder.stop();
       const uri = recorder.uri;
       if (uri) {
+        setCapturedAudioUri(uri);
         const formData = new FormData();
         const filename = uri.split('/').pop() || 'sos_audio.m4a';
         formData.append('audio', { uri, name: filename, type: 'audio/m4a' } as any);
@@ -623,6 +626,7 @@ export default function SOSScreen({ navigation, route }: any) {
       await recorder.stop();
       const uri = recorder.uri;
       if (uri) {
+        setCapturedAudioUri(uri);
         const formData = new FormData();
         const filename = uri.split('/').pop() || 'voice_sos.m4a';
         formData.append('audio', { uri, name: filename, type: 'audio/m4a' } as any);
@@ -1173,25 +1177,84 @@ export default function SOSScreen({ navigation, route }: any) {
             {/* LIVE MINI MAP */}
             {location && (
               <View style={s.mapContainer}>
-                <SafeHerWebMap
-                  style={s.miniMap}
-                  initialRegion={{
-                    latitude: location.latitude,
-                    longitude: location.longitude,
-                    latitudeDelta: 0.012,
-                    longitudeDelta: 0.012,
-                  }}
-                  location={location}
-                  sosTriggered={true}
-                  emergencyServices={nearbyServices.map((serv, idx) => ({
-                    id: `sos-serv-${idx}`,
-                    name: serv.name,
-                    type: (serv.type as any) || 'police',
-                    latitude: serv.latitude || location.latitude + 0.002 * (idx + 1),
-                    longitude: serv.longitude || location.longitude + 0.002 * (idx + 1),
-                  }))}
-                  mapStyle="safeher"
-                />
+                {Platform.OS === 'web' ? (
+                  <SafeHerWebMap
+                    style={s.miniMap}
+                    initialRegion={{
+                      latitude: location.latitude,
+                      longitude: location.longitude,
+                      latitudeDelta: 0.012,
+                      longitudeDelta: 0.012,
+                    }}
+                    location={location}
+                    sosTriggered={true}
+                    emergencyServices={nearbyServices.map((serv, idx) => ({
+                      id: `sos-serv-${idx}`,
+                      name: serv.name,
+                      type: (serv.type as any) || 'police',
+                      latitude: serv.latitude || location.latitude + 0.002 * (idx + 1),
+                      longitude: serv.longitude || location.longitude + 0.002 * (idx + 1),
+                    }))}
+                    mapStyle="safeher"
+                  />
+                ) : (
+                  <MapView
+                    style={s.miniMap}
+                    initialRegion={{
+                      latitude: location.latitude,
+                      longitude: location.longitude,
+                      latitudeDelta: 0.012,
+                      longitudeDelta: 0.012,
+                    }}
+                    customMapStyle={SAFEHER_MAP_STYLE}
+                    showsUserLocation={false}
+                    showsCompass={false}
+                    toolbarEnabled={false}
+                  >
+                    <Marker
+                      coordinate={{ latitude: location.latitude, longitude: location.longitude }}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                    >
+                      <View style={s.userMarkerOuter}>
+                        <View style={s.userMarkerInner} />
+                      </View>
+                    </Marker>
+                    <Circle
+                      center={{ latitude: location.latitude, longitude: location.longitude }}
+                      radius={300}
+                      fillColor="rgba(239, 68, 68, 0.22)"
+                      strokeColor="#ef4444"
+                      strokeWidth={1.5}
+                    />
+                    {nearbyServices.map((serv, idx) => (
+                      <Marker
+                        key={`sos-serv-${idx}`}
+                        coordinate={{
+                          latitude: serv.latitude || location.latitude + 0.002 * (idx + 1),
+                          longitude: serv.longitude || location.longitude + 0.002 * (idx + 1),
+                        }}
+                        anchor={{ x: 0.5, y: 0.5 }}
+                      >
+                        <View
+                          style={[
+                            s.havenMarker,
+                            {
+                              backgroundColor:
+                                serv.type === 'police' ? '#1E3A8A' : serv.type === 'hospital' ? '#991B1B' : '#6B21A8',
+                              borderColor: '#fff',
+                            },
+                          ]}
+                        >
+                          <Ionicons
+                            name={serv.type === 'police' ? 'shield' : serv.type === 'hospital' ? 'medical' : 'heart'}
+                            size={12}
+                            color="#fff"
+                          />
+                        </View>
+                      </Marker>
+                    ))}
+                  </MapView>
+                )}
 
                 <View style={s.mapOverlayBadge}>
                   <Ionicons name="location" size={14} color="#10B981" />
@@ -1254,6 +1317,29 @@ export default function SOSScreen({ navigation, route }: any) {
                   {isRecording ? 'Emergency Audio Stream Active...' : 'Audio Evidence Uploaded to Cloud'}
                 </Text>
               </View>
+
+              {/* Interactive Stored Audio Evidence Player */}
+              {(capturedAudioUri || activeAlertId) && (
+                <AudioEvidencePlayer
+                  audioUri={capturedAudioUri || (activeAlertId ? `/api/sos/audio/${activeAlertId}` : null)}
+                  title="Live Incident Audio Evidence"
+                  transcript={aiIntelResult?.transcript}
+                  stressScore={aiIntelResult?.stress_score}
+                  threatLevel={aiIntelResult?.threat_level || aiIntelResult?.danger_level || aiGuardianRisk.threat_level || 'CRITICAL'}
+                />
+              )}
+
+              {/* Record Additional Audio Clip Button */}
+              <TouchableOpacity
+                style={s.recordMoreAudioBtn}
+                onPress={isRecording ? stopAndUploadRecording : startRecording}
+                activeOpacity={0.8}
+              >
+                <Ionicons name={isRecording ? "stop-circle" : "mic-circle"} size={18} color={isRecording ? "#ef4444" : "#10b981"} />
+                <Text style={s.recordMoreAudioBtnText}>
+                  {isRecording ? "Stop & Save Audio Evidence" : "🎙️ Record Extra Audio Evidence"}
+                </Text>
+              </TouchableOpacity>
 
               <View style={s.evidenceRow}>
                 <Ionicons name="camera" size={18} color="#8B5CF6" />
@@ -2157,6 +2243,24 @@ const s = StyleSheet.create({
     fontSize: 12,
     color: '#C4B5FD',
     fontWeight: '700',
+  },
+  recordMoreAudioBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+    paddingVertical: 10,
+    borderRadius: BorderRadius.md,
+    marginVertical: 8,
+  },
+  recordMoreAudioBtnText: {
+    color: '#10B981',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
   },
 });
 

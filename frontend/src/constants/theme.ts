@@ -116,19 +116,19 @@ export const getSeverityColor = (level: string): string => {
 };
 
 // High-Definition Map Style exactly aligned with SafeHer AI Design System
-// Palette: #0F0A1E (Background), #1E1535 (Card), #2D2050 (Border), #8B5CF6 (Primary), #B8A9D9 (Text)
+// Palette: #0E0920 (Background), #160E30 (Card), #2D1F4E (Roads), #7C3AED (Highways), #FFFFFF (Labels)
 export const SAFEHER_MAP_STYLE = [
   {
     elementType: 'geometry',
-    stylers: [{ color: '#0F0A1E' }],
+    stylers: [{ color: '#0E0920' }],
   },
   {
     elementType: 'labels.text.fill',
-    stylers: [{ color: '#B8A9D9' }],
+    stylers: [{ color: '#FFFFFF' }],
   },
   {
     elementType: 'labels.text.stroke',
-    stylers: [{ color: '#0F0A1E' }, { weight: 3 }],
+    stylers: [{ color: '#0E0920' }, { weight: 3 }],
   },
   {
     featureType: 'administrative',
@@ -138,12 +138,12 @@ export const SAFEHER_MAP_STYLE = [
   {
     featureType: 'administrative.country',
     elementType: 'geometry.stroke',
-    stylers: [{ color: '#2D2050' }, { visibility: 'on' }],
+    stylers: [{ color: '#4C338A' }, { visibility: 'on' }],
   },
   {
     featureType: 'administrative.province',
     elementType: 'geometry.stroke',
-    stylers: [{ color: '#2D2050' }, { visibility: 'on' }],
+    stylers: [{ color: '#4C338A' }, { visibility: 'on' }],
   },
   {
     featureType: 'administrative.locality',
@@ -153,42 +153,42 @@ export const SAFEHER_MAP_STYLE = [
   {
     featureType: 'landscape',
     elementType: 'geometry',
-    stylers: [{ color: '#0F0A1E' }],
+    stylers: [{ color: '#0E0920' }],
   },
   {
     featureType: 'landscape.man_made',
     elementType: 'geometry',
-    stylers: [{ color: '#150D2A' }],
+    stylers: [{ color: '#160E30' }],
   },
   {
     featureType: 'landscape.natural',
     elementType: 'geometry',
-    stylers: [{ color: '#110822' }],
+    stylers: [{ color: '#110926' }],
   },
   {
     featureType: 'poi',
     elementType: 'geometry',
-    stylers: [{ color: '#180E31' }],
+    stylers: [{ color: '#1B113B' }],
   },
   {
     featureType: 'poi',
     elementType: 'labels.text.fill',
-    stylers: [{ color: '#A78BFA' }],
+    stylers: [{ color: '#C4B5FD' }],
   },
   {
     featureType: 'poi.park',
     elementType: 'geometry',
-    stylers: [{ color: '#130B26' }],
+    stylers: [{ color: '#0E2320' }],
   },
   {
     featureType: 'poi.park',
     elementType: 'labels.text.fill',
-    stylers: [{ color: '#6EE7B7' }],
+    stylers: [{ color: '#34D399' }],
   },
   {
     featureType: 'poi.medical',
     elementType: 'labels.text.fill',
-    stylers: [{ color: '#EC4899' }],
+    stylers: [{ color: '#F43F5E' }],
   },
   {
     featureType: 'poi.government',
@@ -198,62 +198,84 @@ export const SAFEHER_MAP_STYLE = [
   {
     featureType: 'road',
     elementType: 'geometry',
-    stylers: [{ color: '#1E1535' }],
+    stylers: [{ color: '#2D1F4E' }],
   },
   {
     featureType: 'road',
     elementType: 'geometry.stroke',
-    stylers: [{ color: '#2D2050' }],
+    stylers: [{ color: '#4A3382' }],
   },
   {
     featureType: 'road',
     elementType: 'labels.text.fill',
-    stylers: [{ color: '#B8A9D9' }],
+    stylers: [{ color: '#FFFFFF' }],
   },
   {
     featureType: 'road.arterial',
     elementType: 'geometry',
-    stylers: [{ color: '#261845' }],
+    stylers: [{ color: '#3B246C' }],
   },
   {
     featureType: 'road.arterial',
     elementType: 'geometry.stroke',
-    stylers: [{ color: '#3A2368' }],
+    stylers: [{ color: '#5D3B9E' }],
   },
   {
     featureType: 'road.highway',
     elementType: 'geometry',
-    stylers: [{ color: '#351C60' }],
+    stylers: [{ color: '#7C3AED' }],
   },
   {
     featureType: 'road.highway',
     elementType: 'geometry.stroke',
-    stylers: [{ color: '#6D28D9' }],
+    stylers: [{ color: '#A78BFA' }],
   },
   {
     featureType: 'road.highway',
     elementType: 'labels.text.fill',
-    stylers: [{ color: '#F8F4FF' }],
+    stylers: [{ color: '#FFFFFF' }],
   },
   {
     featureType: 'transit',
     elementType: 'geometry',
-    stylers: [{ color: '#1A1033' }],
+    stylers: [{ color: '#1E1438' }],
   },
   {
     featureType: 'transit.station',
     elementType: 'labels.text.fill',
-    stylers: [{ color: '#A78BFA' }],
+    stylers: [{ color: '#C4B5FD' }],
   },
   {
     featureType: 'water',
     elementType: 'geometry',
-    stylers: [{ color: '#090514' }],
+    stylers: [{ color: '#0A182E' }],
   },
   {
     featureType: 'water',
     elementType: 'labels.text.fill',
-    stylers: [{ color: '#6B5A8A' }],
+    stylers: [{ color: '#38BDF8' }],
   },
 ];
+
+// Clean Dark Base Map Style for high contrast navigation
+export const CLEAN_DARK_BASE_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#0f172a' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#f1f5f9' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#020617' }, { weight: 3 }] },
+  { featureType: 'administrative', elementType: 'geometry', stylers: [{ color: '#475569' }] },
+  { featureType: 'administrative.locality', elementType: 'labels.text.fill', stylers: [{ color: '#f8fafc' }] },
+  { featureType: 'poi', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+  { featureType: 'poi', elementType: 'labels.text.fill', stylers: [{ color: '#cbd5e1' }] },
+  { featureType: 'road', elementType: 'geometry', stylers: [{ color: '#2d3748' }] },
+  { featureType: 'road', elementType: 'geometry.stroke', stylers: [{ color: '#4a5568' }] },
+  { featureType: 'road', elementType: 'labels.text.fill', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road.highway', elementType: 'geometry', stylers: [{ color: '#3b82f6' }] },
+  { featureType: 'road.highway', elementType: 'geometry.stroke', stylers: [{ color: '#60a5fa' }] },
+  { featureType: 'road.highway', elementType: 'labels.text.fill', stylers: [{ color: '#ffffff' }] },
+  { featureType: 'road.arterial', elementType: 'geometry', stylers: [{ color: '#334155' }] },
+  { featureType: 'transit', elementType: 'geometry', stylers: [{ color: '#1e293b' }] },
+  { featureType: 'water', elementType: 'geometry', stylers: [{ color: '#0369a1' }] },
+  { featureType: 'water', elementType: 'labels.text.fill', stylers: [{ color: '#38bdf8' }] },
+];
+
 

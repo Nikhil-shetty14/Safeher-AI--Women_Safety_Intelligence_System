@@ -31,6 +31,18 @@ async def close_db():
 
 def get_database():
     global client
+    try:
+        import asyncio
+        loop = asyncio.get_running_loop()
+        if client is not None:
+            io_loop = getattr(client, "io_loop", None) or getattr(client, "_io_loop", None)
+            if io_loop is not None and (io_loop.is_closed() or io_loop != loop):
+                client = None
+    except RuntimeError:
+        pass
+    except Exception as e:
+        logger.debug(f"Event loop verification note: {e}")
+
     if client is None:
         client = AsyncIOMotorClient(
             settings.MONGODB_URL,

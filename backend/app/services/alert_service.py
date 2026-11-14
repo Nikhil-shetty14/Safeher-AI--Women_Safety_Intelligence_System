@@ -432,6 +432,13 @@ async def format_alert_response(alert: dict) -> dict:
     elif not raw_addr and location.get("formatted_address"):
         location["address"] = location.get("formatted_address")
 
+    import os
+    audio_path = alert.get("audio_file_path")
+    audio_url = None
+    if audio_path:
+        filename = os.path.basename(audio_path)
+        audio_url = f"/uploads/{filename}"
+
     return {
         "id": alert["_id"],
         "user_id": alert["user_id"],
@@ -445,7 +452,9 @@ async def format_alert_response(alert: dict) -> dict:
         "location": location,
         "message": alert.get("message"),
         "ai_analysis": alert.get("ai_analysis"),
-        "audio_file_path": alert.get("audio_file_path"),
+        "audio_file_path": audio_path,
+        "audio_url": audio_url,
+        "audio_stream_url": f"/api/sos/audio/{alert['_id']}" if audio_path else None,
         "contacts_notified": alert.get("contacts_notified", []),
         "priority_score": alert.get("priority_score", 0),
         "created_at": alert["created_at"],

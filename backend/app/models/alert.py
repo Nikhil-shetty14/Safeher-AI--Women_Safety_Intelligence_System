@@ -59,6 +59,8 @@ class SOSAlertResponse(BaseModel):
     message: Optional[str] = None
     ai_analysis: Optional[dict] = None
     audio_file_path: Optional[str] = None
+    audio_url: Optional[str] = None
+    audio_stream_url: Optional[str] = None
     contacts_notified: List[str] = []
     priority_score: Optional[int] = 0
     created_at: datetime
