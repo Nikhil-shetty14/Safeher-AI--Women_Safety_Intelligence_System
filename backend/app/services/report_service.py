@@ -674,6 +674,8 @@ class ReportGenerator:
 
         # ── 2. EXECUTIVE SUMMARY ──
         elements.append(Paragraph("1. Executive Summary & Operational Posture", h2))
+        avg_ack_text = f"{kpis['avg_ack_mins']} mins" if kpis.get('avg_ack_mins') is not None else "N/A"
+        avg_res_text = f"{kpis['avg_res_mins']} mins" if kpis.get('avg_res_mins') is not None else "N/A"
         summary_text = (
             f"This official intelligence report provides an audited accounting of women safety telemetry, "
             f"rapid emergency dispatches, and predictive risk factors across <b>{meta['jurisdiction']}</b> during "
@@ -681,8 +683,8 @@ class ReportGenerator:
             f"SafeHer AI currently protects <b>{kpis['total_users']:,}</b> active citizens in this jurisdiction. "
             f"A total of <b>{kpis['total_alerts']}</b> SOS alerts were captured, with an overall resolution rate of "
             f"<b>{kpis['sos_resolution_rate']}%</b>. Average emergency acknowledgment latency stands at "
-            f"<b>{f'{kpis['avg_ack_mins']} mins' if kpis['avg_ack_mins'] is not None else 'N/A'}</b>, "
-            f"and resolution time averages <b>{f'{kpis['avg_res_mins']} mins' if kpis['avg_res_mins'] is not None else 'N/A'}</b>. "
+            f"<b>{avg_ack_text}</b>, "
+            f"and resolution time averages <b>{avg_res_text}</b>. "
             f"Citizen grievance redressal recorded <b>{kpis['total_complaints']}</b> official complaints, with a "
             f"<b>{kpis['complaint_res_rate']}%</b> resolution compliance rate. "
             f"Twilio automated telecommunications dispatched <b>{kpis['total_sms']}</b> emergency SMS broadcasts with a "
