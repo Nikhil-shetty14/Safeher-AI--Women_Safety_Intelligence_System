@@ -2,10 +2,8 @@ services:
   - type: web
     name: safeher-backend
     env: python
-    rootDir: backend
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: python run.py
     envVars:
       - key: PYTHON_VERSION
-        value: 3.12.0
-
+        value: 3.11.9
