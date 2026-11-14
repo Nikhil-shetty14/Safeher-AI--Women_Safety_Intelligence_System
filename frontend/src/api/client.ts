@@ -27,30 +27,33 @@ const devIp = getDevServerIp();
 const devHost = devIp ? `http://${devIp}:8000` : null;
 const envHost = process.env.EXPO_PUBLIC_API_BASE_URL;
 
-// Build robust candidate hosts based on runtime environment
+// Build robust candidate hosts based on runtime environment:
+// In production builds, envHost (configured in .env or cloud build secrets) takes highest priority.
 const hosts: string[] = [];
+
+if (envHost && envHost.trim()) {
+  hosts.push(envHost.trim());
+}
+
+if (devHost) {
+  hosts.push(devHost);
+}
+
 if (Platform.OS === 'android') {
-  // On Android, devHost (Metro dev server IP) is the most reliable target
-  if (devHost) hosts.push(devHost);
-  if (envHost && !envHost.includes('127.0.0.1') && !envHost.includes('localhost')) {
-    hosts.push(envHost);
+  // Fallbacks for Android emulator development if no explicit host is defined
+  if (!devHost && !envHost) {
+    hosts.push('http://10.0.2.2:8000');
   }
-  hosts.push('http://10.47.178.100:8000');
-  // Only add 10.0.2.2 as fallback if devHost wasn't detected (pure emulator without Metro IP)
-  if (!devHost) hosts.push('http://10.0.2.2:8000');
 } else {
-  // Web / iOS simulator / Desktop
-  if (envHost) hosts.push(envHost);
-  if (devHost) hosts.push(devHost);
+  // Web / iOS simulator / Desktop fallbacks
   hosts.push('http://127.0.0.1:8000');
   hosts.push('http://localhost:8000');
-  hosts.push('http://10.47.178.100:8000');
 }
 
 // Ordered candidate API hosts
 export const CANDIDATE_HOSTS: string[] = Array.from(new Set(hosts.filter(Boolean) as string[]));
 
-let _activeBaseUrl = CANDIDATE_HOSTS[0] || 'http://10.47.178.100:8000';
+let _activeBaseUrl = CANDIDATE_HOSTS[0] || 'http://127.0.0.1:8000';
 
 type BaseUrlListener = (url: string) => void;
 const _baseUrlListeners: Set<BaseUrlListener> = new Set();
