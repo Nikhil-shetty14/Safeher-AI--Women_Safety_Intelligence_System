@@ -15,7 +15,15 @@ api.interceptors.response.use(
   (err) => {
     if (err.response?.status === 401) {
       localStorage.removeItem('admin_token');
-      window.location.href = '/login';
+      localStorage.removeItem('admin_user');
+      
+      const pathname = typeof window !== 'undefined' ? window.location.pathname : '';
+      const isAlreadyOnLogin = pathname === '/login' || pathname.endsWith('/login');
+      const isLoginRequest = err.config?.url?.includes('/api/admin/login');
+
+      if (!isAlreadyOnLogin && !isLoginRequest) {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(err);
   }

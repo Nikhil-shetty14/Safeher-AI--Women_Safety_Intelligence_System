@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { adminAPI } from './api';
 
 interface AuthCtx {
-  user: any; token: string | null; isAdmin: boolean;
+  user: any; token: string | null; isAdmin: boolean; loading: boolean;
   login: (identifier: string, pass: string) => Promise<any>;
   logout: () => void;
   completeLogin: (token: string, user: any) => void;
@@ -12,11 +12,19 @@ const Ctx = createContext<AuthCtx | null>(null);
 export const AdminAuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<any>(null);
   const [token, setToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    const t = localStorage.getItem('admin_token');
-    const u = localStorage.getItem('admin_user');
-    if (t && u) { setToken(t); setUser(JSON.parse(u)); }
+    try {
+      const t = localStorage.getItem('admin_token');
+      const u = localStorage.getItem('admin_user');
+      if (t && u) { setToken(t); setUser(JSON.parse(u)); }
+    } catch (e) {
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_user');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   const completeLogin = (t: string, u: any) => {
@@ -45,7 +53,7 @@ export const AdminAuthProvider = ({ children }: { children: React.ReactNode }) =
   };
 
   return (
-    <Ctx.Provider value={{ user, token, isAdmin: !!user && ['admin', 'super_admin', 'regional_admin', 'district_admin'].includes(user.role), login, logout, completeLogin }}>
+    <Ctx.Provider value={{ user, token, isAdmin: !!user && ['admin', 'super_admin', 'regional_admin', 'district_admin'].includes(user.role), loading, login, logout, completeLogin }}>
       {children}
     </Ctx.Provider>
   );

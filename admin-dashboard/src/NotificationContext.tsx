@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { useSocket } from "./SocketContext";
+import { useAdminAuth } from "./AuthContext";
 import { adminAPI } from "./api";
 
 export interface Notification {
@@ -42,6 +43,7 @@ const NotificationContext = createContext<NotificationContextType | null>(null);
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const { socket } = useSocket();
+  const { isAdmin, token } = useAdminAuth();
 
   // Load persisted notifications on mount
   useEffect(() => {
@@ -78,6 +80,7 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // Fetch active / unacknowledged alerts & complaints from backend
   const refreshNotifications = useCallback(async () => {
+    if (!isAdmin || !token) return;
     try {
       // 1. Fetch unacknowledged SOS alerts
       const res = await adminAPI.getUnacknowledgedAlerts(25);
@@ -133,14 +136,15 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
     } catch (err) {
       // Background sync may fail if unauthorized; silently ignore
     }
-  }, []);
+  }, [isAdmin, token]);
 
   // Initial sync & periodic background sync
   useEffect(() => {
+    if (!isAdmin || !token) return;
     refreshNotifications();
     const interval = setInterval(refreshNotifications, 30000);
     return () => clearInterval(interval);
-  }, [refreshNotifications]);
+  }, [isAdmin, token, refreshNotifications]);
 
   // Real-time socket event listeners
   useEffect(() => {

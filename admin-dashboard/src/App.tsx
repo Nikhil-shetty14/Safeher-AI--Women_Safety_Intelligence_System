@@ -43,7 +43,14 @@ const Layout = ({ children }: { children: React.ReactNode }) => (
 );
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAdmin } = useAdminAuth();
+  const { isAdmin, loading } = useAdminAuth();
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0a0614", color: "#8b5cf6", fontFamily: "sans-serif" }}>
+        Loading SafeHer Admin Console...
+      </div>
+    );
+  }
   return isAdmin ? (
     <Layout>{children}</Layout>
   ) : (
@@ -52,7 +59,14 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
-  const { isAdmin } = useAdminAuth();
+  const { isAdmin, loading } = useAdminAuth();
+  if (loading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0a0614", color: "#8b5cf6", fontFamily: "sans-serif" }}>
+        Loading SafeHer Admin Console...
+      </div>
+    );
+  }
   return isAdmin ? <Navigate to="/" replace /> : <>{children}</>;
 };
 

@@ -100,10 +100,11 @@ export const SOSAlertProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Initial fetch on login / mount
   useEffect(() => {
+    if (!isAdmin || !token) return;
     refreshCounts();
     const interval = setInterval(refreshCounts, 30000); // Background sync every 30s
     return () => clearInterval(interval);
-  }, [refreshCounts]);
+  }, [isAdmin, token, refreshCounts]);
 
   // Handle Real-time Socket.IO events
   useEffect(() => {
