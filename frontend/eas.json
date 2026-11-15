@@ -11,14 +11,19 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://safeher-ai-women-safety-intelligence-afpd.onrender.com"
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://safeher-ai-women-safety-intelligence-afpd.onrender.com"
+      }
     }
   },
   "submit": {
     "production": {}
   }
 }
-
