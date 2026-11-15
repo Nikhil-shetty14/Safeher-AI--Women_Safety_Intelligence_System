@@ -233,6 +233,7 @@ async def trigger_sos_with_voice(
     user_id: str = Form("unknown"),
     latitude: str = Form("0.0"),
     longitude: str = Form("0.0"),
+    alert_id: str = Form(""),
     audio: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
 ):
@@ -271,28 +272,40 @@ async def trigger_sos_with_voice(
         alert = None
         
         if alerts_col is not None:
-            existing_active = await alerts_col.find_one(
-                {"user_id": current_user["_id"], "status": "active"},
-                sort=[("created_at", -1)]
-            )
-            if existing_active:
-                created_at = existing_active.get("created_at")
-                from datetime import datetime
-                now_dt = datetime.utcnow()
-                age_sec = (now_dt - created_at).total_seconds() if isinstance(created_at, datetime) else 999
-                if age_sec < 300:
-                    alert = existing_active
-                    logger.info(f"Attaching voice evidence to active alert: {alert['_id']}")
+            # Check if specific alert_id was passed directly from client
+            if alert_id and alert_id.strip():
+                target_id = alert_id.strip()
+                alert = await alerts_col.find_one({"_id": target_id, "user_id": current_user["_id"]})
+                if alert:
+                    logger.info(f"Attaching voice evidence directly to designated alert: {alert['_id']}")
                     await alerts_col.update_one(
                         {"_id": alert["_id"]},
                         {"$set": {"audio_file_path": audio_path, "trigger_type": "voice_intelligence"}}
                     )
-                else:
-                    logger.info(f"Resolving stale active alert {existing_active['_id']} ({age_sec:.0f}s old) for fresh voice SOS")
-                    await alerts_col.update_one(
-                        {"_id": existing_active["_id"]},
-                        {"$set": {"status": "resolved", "resolved_at": now_dt, "resolution_note": "Superseded by voice SOS trigger"}}
-                    )
+
+            if not alert:
+                existing_active = await alerts_col.find_one(
+                    {"user_id": current_user["_id"], "status": "active"},
+                    sort=[("created_at", -1)]
+                )
+                if existing_active:
+                    created_at = existing_active.get("created_at")
+                    from datetime import datetime
+                    now_dt = datetime.utcnow()
+                    age_sec = (now_dt - created_at).total_seconds() if isinstance(created_at, datetime) else 999
+                    if age_sec < 300:
+                        alert = existing_active
+                        logger.info(f"Attaching voice evidence to active alert: {alert['_id']}")
+                        await alerts_col.update_one(
+                            {"_id": alert["_id"]},
+                            {"$set": {"audio_file_path": audio_path, "trigger_type": "voice_intelligence"}}
+                        )
+                    else:
+                        logger.info(f"Resolving stale active alert {existing_active['_id']} ({age_sec:.0f}s old) for fresh voice SOS")
+                        await alerts_col.update_one(
+                            {"_id": existing_active["_id"]},
+                            {"$set": {"status": "resolved", "resolved_at": now_dt, "resolution_note": "Superseded by voice SOS trigger"}}
+                        )
 
         if not alert:
             # Create new emergency SOS immediately
@@ -487,6 +500,23 @@ async def upload_photo_evidence(
 
         doc["timestamp"] = doc["timestamp"].isoformat()
         doc["url"] = f"/uploads/{os.path.basename(photo_path)}"
+
+        # Also push photo evidence summary directly to alert document in MongoDB
+        alerts_col = get_collection("alerts")
+        if alerts_col is not None and resolved_alert_id and resolved_alert_id != "unknown":
+            try:
+                await alerts_col.update_one(
+                    {"_id": resolved_alert_id},
+                    {"$push": {"photo_evidence": {
+                        "id": doc["_id"],
+                        "photo_path": photo_path,
+                        "url": doc["url"],
+                        "timestamp": doc["timestamp"],
+                        "location": doc["location"]
+                    }}}
+                )
+            except Exception as update_e:
+                logger.warning(f"Could not push photo to alert doc: {update_e}")
 
         await broadcast_to_admins("new_photo_evidence", doc)
 

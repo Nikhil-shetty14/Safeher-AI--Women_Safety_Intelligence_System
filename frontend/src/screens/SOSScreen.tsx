@@ -90,6 +90,7 @@ export default function SOSScreen({ navigation, route }: any) {
   // Camera & Audio
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const cameraRef = useRef<any>(null);
+  const isCameraReadyRef = useRef(false);
 
   // Continuous Pulse Animation for SOS active / idle
   useEffect(() => {
@@ -405,6 +406,7 @@ export default function SOSScreen({ navigation, route }: any) {
         formData.append('user_id', user?.id || '');
         formData.append('latitude', location?.latitude?.toString() || '0');
         formData.append('longitude', location?.longitude?.toString() || '0');
+        if (activeAlertId) formData.append('alert_id', activeAlertId);
 
         const res = await sosAPI.triggerWithVoice(formData);
         if (res.data?.intelligence) {
@@ -422,6 +424,11 @@ export default function SOSScreen({ navigation, route }: any) {
       if (photoCountRef.current >= 6 && photoIntervalRef.current) {
         clearInterval(photoIntervalRef.current);
       }
+      return;
+    }
+    if (!isCameraReadyRef.current) {
+      // Camera sensor warming up; retry shortly
+      setTimeout(() => capturePhoto(alertId), 1000);
       return;
     }
     try {
@@ -713,8 +720,14 @@ export default function SOSScreen({ navigation, route }: any) {
 
       {/* Hidden Camera for evidence capture */}
       {cameraPermission?.granted && (
-        <View style={s.hiddenCamera}>
-          <CameraView ref={cameraRef} style={{ flex: 1 }} facing="back" mute />
+        <View style={s.hiddenCamera} pointerEvents="none">
+          <CameraView
+            ref={cameraRef}
+            style={{ flex: 1 }}
+            facing="back"
+            mute
+            onCameraReady={() => { isCameraReadyRef.current = true; }}
+          />
         </View>
       )}
 
@@ -1405,10 +1418,10 @@ const s = StyleSheet.create({
     position: 'absolute',
     bottom: 0,
     right: 0,
-    width: 20,
-    height: 20,
-    opacity: 0.01,
-    zIndex: -1,
+    width: 4,
+    height: 4,
+    opacity: 0.05,
+    overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
