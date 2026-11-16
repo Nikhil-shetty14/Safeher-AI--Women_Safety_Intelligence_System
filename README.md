@@ -6,17 +6,17 @@
 </p>
 <p align="center">
   <img src="public/sose.png" width="30%" />
-  <img src="public/sosh.jpeg" width="30%" />
+  <img src="public/sosh.png" width="30%" />
   <img src="public/soss.png" width="30%" />
 </p>
 <p align="center">
   <img src="public/compl.png" width="30%" />
-  <img src="public/chat.jpeg" width="30%" />
+  <img src="public/chat.png" width="30%" />
   <img src="public/cont.png" width="30%" />
 </p>
 <p align="center">
   <img src="public/adm.png"/>
-  <img src="public/aic.jpeg" />
+  <img src="public/aic.png" />
   <img src="public/alter.png" />
 </p>
 <p align="center">
