@@ -39,9 +39,7 @@
 > 
 > **Tech Stack:** React Native · FastAPI · MongoDB · Socket.IO · GPT-4 · Whisper
 
-![SafeHer AI Banner](https://via.placeholder.com/1000x300.png?text=SafeHer+AI+-+Women+Safety+Platform)
 
----
 
 ## 🌟 Key Features
 
