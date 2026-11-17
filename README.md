@@ -21,17 +21,17 @@
 </p>
 <p align="center">
   <img src="public/amap.png"/>
-  <img src="public/anal.jpeg" />
+  <img src="public/anal.png" />
   <img src="public/alter.png" />
 </p>
 <p align="center">
   <img src="public/cast.png"/>
-  <img src="public/cons.jpeg" />
+  <img src="public/cons.png" />
   <img src="public/intel.png" />
 </p>
 <p align="center">
   <img src="public/adcent.png"/>
-  <img src="public/adcreate.jpeg" />
+  <img src="public/adcreate.png" />
   <img src="public/aaa.png" />
 </p>
 
