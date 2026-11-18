@@ -5,16 +5,26 @@ from loguru import logger
 client: AsyncIOMotorClient = None
 
 
+def _create_motor_client() -> AsyncIOMotorClient:
+    """Create a tuned, memory-efficient AsyncIOMotorClient."""
+    return AsyncIOMotorClient(
+        settings.MONGODB_URL,
+        maxPoolSize=10,
+        minPoolSize=1,
+        maxIdleTimeMS=30000,
+        connectTimeoutMS=5000,
+        socketTimeoutMS=10000,
+        serverSelectionTimeoutMS=5000,
+        waitQueueTimeoutMS=5000,
+        tlsAllowInvalidCertificates=True,
+    )
+
+
 async def connect_db():
     global client
     try:
         if client is None:
-            client = AsyncIOMotorClient(
-                settings.MONGODB_URL,
-                serverSelectionTimeoutMS=10000,
-                connectTimeoutMS=10000,
-                tlsAllowInvalidCertificates=True,
-            )
+            client = _create_motor_client()
         await client.admin.command("ping")
         logger.info("Connected to MongoDB Atlas successfully")
     except Exception as e:
@@ -26,6 +36,7 @@ async def close_db():
     global client
     if client:
         client.close()
+        client = None
         logger.info("MongoDB connection closed")
 
 
@@ -44,12 +55,7 @@ def get_database():
         logger.debug(f"Event loop verification note: {e}")
 
     if client is None:
-        client = AsyncIOMotorClient(
-            settings.MONGODB_URL,
-            serverSelectionTimeoutMS=10000,
-            connectTimeoutMS=10000,
-            tlsAllowInvalidCertificates=True,
-        )
+        client = _create_motor_client()
     return client[settings.DATABASE_NAME]
 
 

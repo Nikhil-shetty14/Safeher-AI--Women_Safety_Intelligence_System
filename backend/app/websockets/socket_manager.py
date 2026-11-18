@@ -4,15 +4,15 @@ from loguru import logger
 from typing import Dict, Set
 from datetime import datetime
 
-# Socket.IO server
+# Socket.IO server - tuned for memory efficiency on Render (<512MB RAM)
 sio = socketio.AsyncServer(
     async_mode="asgi",
     cors_allowed_origins="*",
-    logger=True,
-    engineio_logger=True,
-    ping_timeout=60,
-    ping_interval=25,
-    max_http_buffer_size=1_000_000,
+    logger=False,
+    engineio_logger=False,
+    ping_timeout=45,
+    ping_interval=20,
+    max_http_buffer_size=500_000,
 )
 
 # Track connected users: {user_id: sid}
@@ -22,9 +22,9 @@ admin_sockets: Dict[str, dict] = {}
 # Track live locations: {user_id: location_data}
 live_locations: Dict[str, dict] = {}
 
-# Maximum tracked entities to prevent unbounded memory growth
-_MAX_CONNECTED_USERS = 50_000
-_MAX_LIVE_LOCATIONS = 50_000
+# Maximum tracked entities to prevent unbounded memory growth on 512MB instances
+_MAX_CONNECTED_USERS = 5_000
+_MAX_LIVE_LOCATIONS = 5_000
 
 
 @sio.event

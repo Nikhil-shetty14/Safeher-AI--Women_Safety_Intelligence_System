@@ -1,0 +1,9 @@
+# SafeHer AI - Heavy Local Inference Optional Dependencies
+# Use only on environments with at least 2GB-4GB RAM or GPU
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+torchaudio
+openai-whisper==20250625
+librosa==0.11.0
+soundfile==0.13.1

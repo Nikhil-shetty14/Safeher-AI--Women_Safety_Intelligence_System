@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     # Ollama Local LLM
     OLLAMA_BASE_URL: str = "http://localhost:11434"
 
+    # AI Engine & Inference Offloading (Keep Render lightweight < 150MB)
+    ENABLE_LOCAL_HEAVY_AI: bool = False
+    AI_INFERENCE_SERVICE_URL: str = ""
+    GROQ_API_KEY: str = ""
+    OPENAI_API_KEY: str = ""
+    GEMINI_API_KEY: str = ""
+
     # Twilio
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""

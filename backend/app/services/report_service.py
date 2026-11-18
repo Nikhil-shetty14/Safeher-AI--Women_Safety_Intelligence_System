@@ -10,10 +10,12 @@ import statistics
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
 
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
+def _get_plt():
+    """Lazily load matplotlib on first report chart render to save ~45MB startup RAM."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    return plt
 
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import (
@@ -487,6 +489,7 @@ class ReportGenerator:
         else:
             chart_colors = ["#DC2626", "#EF4444", "#F59E0B", "#10B981"]
 
+        plt = _get_plt()
         fig, ax = plt.subplots(figsize=(4.2, 3.2), dpi=150)
         wedges, texts, autotexts = ax.pie(
             sizes,
@@ -523,6 +526,7 @@ class ReportGenerator:
         return buf
 
     def generate_trends_chart(self, seven_days_data: list) -> io.BytesIO:
+        plt = _get_plt()
         fig, ax = plt.subplots(figsize=(4.2, 3.2), dpi=150)
 
         if not seven_days_data:

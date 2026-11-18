@@ -77,9 +77,20 @@ async def analyze_voice(
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     audio_path = os.path.join(settings.UPLOAD_DIR, f"{uuid.uuid4()}.wav")
 
+    MAX_AUDIO_BYTES = 15 * 1024 * 1024
+    total_read = 0
     async with aiofiles.open(audio_path, "wb") as f:
-        content = await audio.read()
-        await f.write(content)
+        while True:
+            chunk = await audio.read(65536)
+            if not chunk:
+                break
+            total_read += len(chunk)
+            if total_read > MAX_AUDIO_BYTES:
+                await f.close()
+                if os.path.exists(audio_path):
+                    os.remove(audio_path)
+                raise HTTPException(status_code=413, detail="Audio file exceeds 15MB limit")
+            await f.write(chunk)
 
     transcript = ""
     try:

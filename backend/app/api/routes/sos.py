@@ -255,14 +255,26 @@ async def trigger_sos_with_voice(
         except (ValueError, TypeError):
             lat, lng = 0.0, 0.0
 
-        # Save audio using robust shutil method
+        # Save audio using bounded streaming (max 15MB) to protect RAM and disk
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
         audio_id = str(uuid.uuid4())
         ext = os.path.splitext(audio.filename)[1] or ".m4a"
         audio_path = os.path.join(settings.UPLOAD_DIR, f"{audio_id}{ext}")
 
+        MAX_AUDIO_BYTES = 15 * 1024 * 1024
+        total_read = 0
         with open(audio_path, "wb") as buffer:
-            shutil.copyfileobj(audio.file, buffer)
+            while True:
+                chunk = await audio.read(65536)
+                if not chunk:
+                    break
+                total_read += len(chunk)
+                if total_read > MAX_AUDIO_BYTES:
+                    buffer.close()
+                    if os.path.exists(audio_path):
+                        os.remove(audio_path)
+                    return {"success": False, "error": "Audio file exceeds 15MB limit"}
+                buffer.write(chunk)
         
         logger.info(f"FILE SAVED | Path: {audio_path} | Size: {os.path.getsize(audio_path)} bytes")
 
@@ -464,8 +476,20 @@ async def upload_photo_evidence(
         ext = os.path.splitext(photo.filename)[1] or ".jpg"
         photo_path = os.path.join(settings.UPLOAD_DIR, f"{photo_id}{ext}")
 
+        MAX_PHOTO_BYTES = 10 * 1024 * 1024
+        total_read = 0
         with open(photo_path, "wb") as buffer:
-            shutil.copyfileobj(photo.file, buffer)
+            while True:
+                chunk = await photo.read(65536)
+                if not chunk:
+                    break
+                total_read += len(chunk)
+                if total_read > MAX_PHOTO_BYTES:
+                    buffer.close()
+                    if os.path.exists(photo_path):
+                        os.remove(photo_path)
+                    return {"success": False, "error": "Photo evidence exceeds 10MB limit"}
+                buffer.write(chunk)
 
         evidence_col = get_collection("photo_evidence")
 

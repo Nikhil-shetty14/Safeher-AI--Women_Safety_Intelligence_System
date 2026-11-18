@@ -23,4 +23,8 @@ if __name__ == "__main__":
         port=port,
         reload=is_debug,
         log_level="info",
+        workers=1,
+        limit_concurrency=100,
+        timeout_keep_alive=15,
+        backlog=128,
     )
