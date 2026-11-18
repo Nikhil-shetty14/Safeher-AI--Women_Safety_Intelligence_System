@@ -15,6 +15,7 @@ class AlertStatus(str, Enum):
     active = "active"
     resolved = "resolved"
     false_alarm = "false_alarm"
+    cancelled = "cancelled"
 
 
 class LocationData(BaseModel):

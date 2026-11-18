@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     GEMINI_API_KEY: str = ""
 
+    # Voice SOS & Acoustic Intelligence Settings
+    AI_VOICE_AUTO_SOS_THRESHOLD: int = 75  # Minimum risk score (0-100) to trigger auto SOS
+    AI_VOICE_STRESS_THRESHOLD: float = 0.70  # Acoustic stress threshold (0.0-1.0)
+    AI_VOICE_DUPLICATE_WINDOW_SEC: int = 300  # 5 min window for grouping repeated voice chunks
+    AI_VOICE_CANCELLATION_WINDOW_SEC: int = 15  # Grace period for user cancellation
+
     # Twilio
     TWILIO_ACCOUNT_SID: str = ""
     TWILIO_AUTH_TOKEN: str = ""

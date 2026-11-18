@@ -239,27 +239,35 @@ def _pure_python_acoustic_analysis(audio_file_path: str) -> Dict[str, Any]:
         # Distress classification
         # Screaming / extreme loud distress
         if dbfs > -13.0 or rms > 12000:
-            stress_score = 0.90
+            stress_score = 0.92
             emotion = "fear/scream"
             danger_level = "critical"
         # Dynamic vocal agitation / shouting / gasping
-        elif variance > 80.0 and dbfs > -26.0:
-            stress_score = 0.80
+        elif variance > 75.0 and dbfs > -26.0:
+            stress_score = 0.82
             emotion = "panic/rapid_speech"
             danger_level = "high"
         # Elevated background aggression or high volume
-        elif dbfs > -20.0 or rms > 6000:
+        elif dbfs > -18.0 or rms > 7000:
             stress_score = 0.75
             emotion = "aggression/loud_noise"
             danger_level = "high"
         # Whispering / muffled / suppressed vocalization
-        elif dbfs < -42.0:
-            stress_score = 0.25
-            emotion = "whispering/muffled"
+        elif dbfs < -45.0 or rms < 400:
+            stress_score = 0.12
+            emotion = "ambient/silence"
+            danger_level = "safe"
+        elif variance < 45.0 and -38.0 <= dbfs <= -22.0:
+            stress_score = 0.20
+            emotion = "calm/conversational"
+            danger_level = "safe"
+        elif variance < 65.0:
+            stress_score = 0.35
+            emotion = "normal/conversational"
             danger_level = "low"
         else:
-            stress_score = 0.45
-            emotion = "agitated"
+            stress_score = 0.48
+            emotion = "elevated/tense"
             danger_level = "medium"
 
         return {

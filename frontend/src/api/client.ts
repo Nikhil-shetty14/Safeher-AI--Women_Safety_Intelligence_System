@@ -270,6 +270,11 @@ export const sosAPI = {
     api.get(`/api/sos/my-alerts?skip=${skip}&limit=${limit}`),
   resolveAlert: (alertId: string) => api.patch(`/api/sos/${alertId}/resolve`),
   resolve: (alertId: string) => api.patch(`/api/sos/${alertId}/resolve`),
+  cancelVoiceSOS: (alertId: string, reason?: string) => {
+    const fd = new FormData();
+    if (reason) fd.append('reason', reason);
+    return api.post(`/api/sos/${alertId}/cancel-voice`, fd);
+  },
   uploadPhotoEvidence: (formData: FormData) =>
     uploadMultipartWithRetry('/api/sos/upload-evidence', formData),
 };

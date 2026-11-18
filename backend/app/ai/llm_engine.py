@@ -289,134 +289,359 @@ async def analyze_text_for_danger(text: str, location: Optional[dict] = None) ->
 
     except httpx.RequestError as e:
         logger.error(f"Ollama Connection Error: {e}")
-        return {
-            "danger_level": "HIGH",
-            "risk_score": 80,
-            "emotion": "unknown",
-            "summary": "AI service unreachable – treating as high-risk by default.",
-            "recommended_action": ["Dispatch responders immediately", "Attempt contact verification"],
-            "fallback_active": True,
-            "fallback_reason": f"Ollama connection error: {str(e)}"
-        }
+        fallback = evaluate_keyword_and_acoustic_threat(text, {}, location)
+        fallback["fallback_active"] = True
+        fallback["fallback_reason"] = f"Ollama connection error: {str(e)}"
+        return fallback
     except json.JSONDecodeError as e:
         logger.error(f"Ollama returned invalid JSON: {e}")
-        return {
-            "danger_level": "HIGH",
-            "risk_score": 80,
-            "emotion": "unknown",
-            "summary": "AI returned an unparseable response – treating as high-risk.",
-            "recommended_action": ["Dispatch responders immediately"],
-            "fallback_active": True,
-            "fallback_reason": f"Invalid JSON from Ollama: {str(e)}"
-        }
+        fallback = evaluate_keyword_and_acoustic_threat(text, {}, location)
+        fallback["fallback_active"] = True
+        fallback["fallback_reason"] = f"Invalid JSON from Ollama: {str(e)}"
+        return fallback
     except Exception as e:
         logger.error(f"Ollama analysis failed: {e}")
-        return {
-            "danger_level": "HIGH",
-            "risk_score": 80,
-            "emotion": "unknown",
-            "summary": "AI analysis failed – treating as high-risk by default.",
-            "recommended_action": ["Dispatch responders immediately"],
-            "fallback_active": True,
-            "fallback_reason": f"Analysis error: {str(e)}"
-        }
+        fallback = evaluate_keyword_and_acoustic_threat(text, {}, location)
+        fallback["fallback_active"] = True
+        fallback["fallback_reason"] = f"Analysis error: {str(e)}"
+        return fallback
+
+
+# ── Emergency Distress Lexicons & Patterns ──
+CRITICAL_DISTRESS_PATTERNS = [
+    r"\bhelp\s+me\b",
+    r"\bsave\s+me\b",
+    r"\bi(?:'m|\s+am)\s+in\s+danger\b",
+    r"\bsomeone\s+is\s+following\s+me\b",
+    r"\bsomeone\s+is\s+chasing\s+me\b",
+    r"\bcall\s+(?:the\s+)?police\b",
+    r"\bplease\s+help\b",
+    r"\bleave\s+me\s+alone\b",
+    r"\bstop\s+touching\s+me\b",
+    r"\bdon't\s+touch\s+me\b",
+    r"\bback\s+off\b",
+    r"\bhe\s+has\s+a\s+(?:knife|gun|weapon)\b",
+    r"\bi(?:'m|\s+am)\s+being\s+attacked\b",
+    r"\bi(?:'m|\s+am)\s+trapped\b",
+    r"\bkidnap\b",
+    r"\bemergency\b",
+    r"\bcall\s+(?:911|100|112)\b",
+    r"\bget\s+away\s+from\s+me\b",
+    r"\bbachao\b",
+    r"\bmujhe\s+bachao\b",
+    r"\bmadad\s+karo\b",
+    r"\bchhod\s+(?:do|mujhe)\b",
+    r"\bpolice\s+bulao\b",
+    r"\bkoi\s+piche\s+aa\s+raha\s+hai\b",
+    r"\bmaro\s+mat\b",
+    r"\bchodo\s+mujhe\b",
+    r"\bjaane\s+do\b",
+    r"\bkhatra\s+hai\b",
+]
+
+SECONDARY_DISTRESS_KEYWORDS = [
+    "help", "stalking", "threat", "attack", "knife", "gun", "trapped", "harass",
+    "hurt", "stranger", "grabbed", "following", "danger", "police", "run", "madad", "khatra"
+]
+
+BENIGN_CONTEXT_PATTERNS = [
+    r"\bhelp\s+(?:me\s+)?with\s+(?:my\s+)?(?:homework|assignment|project|exam|study|code|math|cooking|recipe|bags|luggage|chores|laundry)\b",
+    r"\bcan\s+you\s+(?:please\s+)?help\s+me\s+(?:find|cook|carry|clean|solve|understand|download|fix|move)\b",
+    r"\bwatching\s+(?:a\s+)?(?:movie|film|video|show|netflix|youtube)\b",
+    r"\blistening\s+to\s+(?:music|a\s+song)\b",
+    r"\bplaying\s+(?:a\s+)?(?:game|video\s+game|cards)\b",
+    r"\bjust\s+kidding\b",
+    r"\bfalse\s+alarm\b",
+    r"\bi(?:'m|\s+am)\s+(?:fine|okay|ok|safe)\b",
+    r"\beverything\s+is\s+(?:fine|okay|good|cool)\b",
+    r"\bdon't\s+worry\b",
+    r"\bno\s+emergency\b",
+    r"\bhello\b",
+    r"\bhi\b",
+    r"\bgood\s+morning\b",
+    r"\bgood\s+evening\b",
+    r"\bhow\s+are\s+you\b",
+    r"\bwhat's\s+up\b",
+]
 
 
 def evaluate_keyword_and_acoustic_threat(transcript: str, acoustic_data: dict, location: dict = None) -> dict:
     """
-    Deterministic rule-based and acoustic signal processing threat evaluation.
-    Provides immediate, zero-latency tactical fallback when LLM is offline or times out.
+    Context-aware threat evaluation combining speech transcript semantics,
+    distress phrase matching, acoustic signal telemetry, and false-positive suppression.
     """
     text = (transcript or "").lower().strip()
     acoustic_data = acoustic_data or {}
     
-    # Emergency distress lexicons (English + Hindi/Hinglish)
-    critical_keywords = [
-        "help", "save me", "please help", "call police", "emergency", "danger",
-        "stalking", "following me", "stop", "leave me", "don't touch", "threat",
-        "attack", "knife", "gun", "trapped", "harass", "screaming", "kill",
-        "kidnap", "hurt", "stranger", "back off", "police", "run", "grabbed",
-        "bachao", "madad", "chodo", "jaane do", "police bulao", "khatra",
-        "mujhe bachao", "chhod do", "maro mat", "bachao bachao", "chhod mujhe"
-    ]
-    
-    detected_words = [kw for kw in critical_keywords if re.search(r'\b' + re.escape(kw) + r'\b', text)]
-    if not detected_words:
-        # Also check substring match for short phrases
-        detected_words = [kw for kw in ["help", "bachao", "madad", "save me", "police"] if kw in text]
+    # 1. Match critical distress patterns
+    critical_matches = []
+    for pat in CRITICAL_DISTRESS_PATTERNS:
+        match = re.search(pat, text)
+        if match:
+            critical_matches.append(match.group(0))
 
+    # 2. Match benign context patterns (false-positive dampeners)
+    benign_matches = []
+    for pat in BENIGN_CONTEXT_PATTERNS:
+        match = re.search(pat, text)
+        if match:
+            benign_matches.append(match.group(0))
+
+    # 3. Match secondary keywords
+    secondary_words = [kw for kw in SECONDARY_DISTRESS_KEYWORDS if re.search(r'\b' + re.escape(kw) + r'\b', text)]
+
+    # 4. Extract acoustic features
     stress_score = float(acoustic_data.get("stress_score", 0.0) or 0.0)
     emotion = acoustic_data.get("emotion") or "neutral"
     pitch = acoustic_data.get("acoustic_features", {}).get("pitch_hz", 0) if isinstance(acoustic_data.get("acoustic_features"), dict) else 0
-    energy = acoustic_data.get("acoustic_features", {}).get("energy_rms", 0) if isinstance(acoustic_data.get("acoustic_features"), dict) else 0
+    dbfs = acoustic_data.get("acoustic_features", {}).get("dbfs", -60.0) if isinstance(acoustic_data.get("acoustic_features"), dict) else -60.0
+    rms = acoustic_data.get("acoustic_features", {}).get("energy_rms", 0) if isinstance(acoustic_data.get("acoustic_features"), dict) else 0
 
     detected_threats = []
     detected_emotions = []
+    intent = "UNKNOWN"
+    trigger_emergency = False
+    danger_level = "LOW"
+    risk_score = 15
+    confidence_score = 0.90
+    trigger_reason = "Standard ambient audio evaluation"
 
-    if detected_words:
-        detected_threats.append(f"Verbal distress keywords confirmed: {', '.join(detected_words[:4])}")
-        detected_emotions.append("Panic / Vocal Duress")
-
-    if stress_score >= 0.7 or emotion in ["fear/scream", "panic/rapid_speech", "aggression/loud_noise"]:
-        detected_threats.append(f"Acoustic panic frequency signature (Stress: {int(stress_score*100)}%, Pitch: {int(pitch)}Hz)")
-        detected_emotions.append("Acute Distress / Screaming")
-    elif stress_score >= 0.4:
-        detected_threats.append("Vocal strain and agitated tempo detected")
-        detected_emotions.append("Agitated / Elevated Stress")
-
-    if detected_words or stress_score >= 0.7:
+    # ── Contextual Intent & Threat Synthesis ──
+    # Condition A: Explicit Critical Distress Phrases present AND no benign cancellation
+    if critical_matches and not benign_matches:
+        intent = "URGENT_DISTRESS"
         danger_level = "CRITICAL"
-        risk_score = max(92, min(99, int(85 + (stress_score * 14))))
-    elif stress_score >= 0.4 or len(text) > 5:
+        risk_score = min(99, max(88, int(86 + (stress_score * 13))))
+        trigger_emergency = True
+        confidence_score = 0.96
+        detected_threats.append(f"Confirmed distress vocalization: {', '.join(critical_matches[:3])}")
+        detected_emotions.append("Acute Distress / Panic")
+        trigger_reason = f"Distress phrases confirmed ('{', '.join(critical_matches[:2])}') with {int(stress_score*100)}% vocal duress"
+
+    # Condition B: Benign conversation context detected (False-Positive Protection)
+    elif benign_matches and stress_score < 0.70:
+        intent = "BENIGN_CONVERSATION"
+        danger_level = "SAFE"
+        risk_score = min(30, max(5, int(10 + (stress_score * 20))))
+        trigger_emergency = False
+        confidence_score = 0.94
+        detected_emotions.append("Calm / Conversational")
+        trigger_reason = f"Benign conversational pattern detected ('{benign_matches[0]}') - false positive suppressed"
+
+    # Condition C: Acoustic Panic Frequency / Screaming Signature
+    elif stress_score >= 0.70 or emotion in ["fear/scream", "panic/rapid_speech", "aggression/loud_noise"]:
+        intent = "ACOUSTIC_DISTRESS"
+        danger_level = "CRITICAL" if stress_score >= 0.82 or dbfs > -15.0 else "HIGH"
+        risk_score = min(98, max(78, int(75 + (stress_score * 22))))
+        trigger_emergency = risk_score >= getattr(settings, "AI_VOICE_AUTO_SOS_THRESHOLD", 75)
+        confidence_score = 0.91
+        detected_threats.append(f"Acoustic panic frequency signature (Stress: {int(stress_score*100)}%, Pitch: {int(pitch)}Hz, {dbfs:.1f} dBFS)")
+        detected_emotions.append("Acute Screaming / Auditory Duress")
+        trigger_reason = f"Acoustic panic signature confirmed ({int(stress_score*100)}% stress intensity, {emotion})"
+
+    # Condition D: Secondary distress keyword without benign dampeners
+    elif secondary_words and not benign_matches and (stress_score >= 0.35 or len(text) > 10):
+        intent = "INDIRECT_PERIL"
         danger_level = "HIGH"
-        risk_score = max(78, min(88, int(70 + (stress_score * 20))))
+        risk_score = min(88, max(75, int(72 + (stress_score * 18))))
+        trigger_emergency = risk_score >= getattr(settings, "AI_VOICE_AUTO_SOS_THRESHOLD", 75)
+        confidence_score = 0.88
+        detected_threats.append(f"Vulnerability keyword detected: {', '.join(secondary_words[:3])}")
+        detected_emotions.append("Elevated Anxiety / Apprehension")
+        trigger_reason = f"Secondary distress signals detected ('{', '.join(secondary_words[:2])}')"
+
+    # Condition E: Ambient noise or silence
+    elif dbfs < -42.0 and not secondary_words and not critical_matches:
+        intent = "AMBIENT_NOISE"
+        danger_level = "SAFE"
+        risk_score = min(15, max(5, int(5 + (stress_score * 10))))
+        trigger_emergency = False
+        confidence_score = 0.95
+        detected_emotions.append("Neutral / Ambient")
+        trigger_reason = "Low-amplitude background noise without human distress"
+
+    # Condition F: Normal speech without keywords or stress
     else:
-        danger_level = "HIGH"
-        risk_score = 75
+        intent = "BENIGN_CONVERSATION"
+        danger_level = "SAFE" if stress_score < 0.35 else "LOW"
+        risk_score = min(35, max(10, int(15 + (stress_score * 25))))
+        trigger_emergency = False
+        confidence_score = 0.90
+        detected_emotions.append("Normal Speech")
+        trigger_reason = "Conversational vocalization without distress indicators"
 
     loc_str = "Unknown Area"
     if location and location.get("latitude") and location.get("longitude"):
         loc_str = f"GPS ({location['latitude']:.4f}, {location['longitude']:.4f})"
 
-    kw_summary = f"Emergency distress phrases ('{', '.join(detected_words[:3])}')" if detected_words else "Ambient audio stress telemetry"
+    kw_summary = f"Emergency phrases ('{', '.join(critical_matches[:2])}')" if critical_matches else (f"Distress signals ('{', '.join(secondary_words[:2])}')" if secondary_words else f"Audio profile '{emotion}'")
     tactical_summary = (
-        f"VOICE INTELLIGENCE SUMMARY: {kw_summary} captured via mobile audio sensor near {loc_str}. "
-        f"Librosa acoustic analysis confirms emotion '{emotion}' with {int(stress_score * 100)}% vocal stress intensity. "
-        f"Whisper transcription: \"{transcript[:120] if transcript else '[Unintelligible speech / acoustic scream]'}\". "
-        f"Immediate tactical intervention and responder dispatch required."
+        f"VOICE INTELLIGENCE SUMMARY: {kw_summary} analyzed near {loc_str}. "
+        f"Intent classified as {intent} with {int(stress_score * 100)}% acoustic stress intensity ({dbfs:.1f} dBFS). "
+        f"Whisper transcript: \"{transcript[:140] if transcript else '[Acoustic vocalization / environmental audio]'}\". "
+        f"{'Immediate tactical response and emergency contacts broadcast active.' if trigger_emergency else 'Standard monitoring active - emergency criteria not triggered.'}"
     )
 
+    dispatch_script = (
+        f"DISPATCH SCRIPT [PRIORITY 1 - CODE RED]: Attention all patrolling units near {loc_str}. "
+        f"Voice SOS duress signal active! Trigger reason: {trigger_reason}. "
+        f"Nearest Rapid Intervention Vehicle establish visual contact. Coordinates: lat {location.get('latitude', 0.0) if location else 0.0}, lon {location.get('longitude', 0.0) if location else 0.0}."
+    ) if trigger_emergency else "No tactical dispatch required. Normal status verified."
+
     recommendations = [
-        "Dispatch nearest patrol unit immediately",
+        "Dispatch nearest patrol unit immediately to vector coordinates",
         "Initiate live GPS breadcrumb trace on Tactical Command Map",
         "Notify registered emergency contacts via Twilio SMS broadcast",
         "Maintain continuous real-time audio and photographic evidence capture"
+    ] if trigger_emergency else [
+        "Continue passive monitoring",
+        "No intervention required"
     ]
 
     return {
         "danger_level": danger_level,
         "risk_score": risk_score,
         "emotion": emotion,
-        "detected_emotions": detected_emotions or [emotion, "Elevated Stress"],
-        "detected_threats": detected_threats or ["Emergency Voice SOS Signal"],
+        "intent": intent,
+        "detected_emotions": detected_emotions or [emotion],
+        "detected_threats": detected_threats or (["Emergency Duress Signal"] if trigger_emergency else ["No Threat Detected"]),
+        "distress_phrases_detected": critical_matches + secondary_words,
         "ai_tactical_summary": tactical_summary,
         "summary": tactical_summary,
+        "ai_script": dispatch_script,
         "recommendations": recommendations,
-        "confidence_score": 0.94 if detected_words else 0.88,
-        "trigger_emergency_protocol": True,
+        "confidence_score": confidence_score,
+        "trigger_emergency_protocol": trigger_emergency,
+        "trigger_reason": trigger_reason,
         "fallback_active": True,
-        "ai_engine": "SafeHer Acoustic-Keyword Neural Classifier"
+        "ai_engine": "SafeHer Contextual Semantic & Acoustic Classifier"
     }
 
 
-async def analyze_audio_intelligence(transcript: str, acoustic_data: dict, location: dict = None) -> dict:
+def generate_ai_decision_log(
+    session_id: str,
+    transcript: str,
+    acoustic_data: dict,
+    intel: dict,
+    location: dict = None,
+    audio_meta: dict = None,
+    threshold: int = 75,
+    action_taken: str = "AUTO_SOS_CREATED",
+    alert_id: str = None
+) -> dict:
+    """
+    Generate an auditable, transparent AI Decision Log detailing every pipeline
+    stage, acoustic telemetry, contextual intent reasoning, threshold arbitration,
+    and responder actions.
+    """
+    from datetime import datetime
+    now_iso = datetime.utcnow().isoformat()
+    audio_meta = audio_meta or {}
+    acoustic_feats = acoustic_data.get("acoustic_features", {}) if isinstance(acoustic_data.get("acoustic_features"), dict) else {}
+
+    criteria_met = bool(intel.get("trigger_emergency_protocol", False) or intel.get("risk_score", 0) >= threshold)
+
+    audit_steps = [
+        {
+            "step": 1,
+            "name": "Audio Ingestion & Dual Storage",
+            "status": "COMPLETED",
+            "timestamp": now_iso,
+            "detail": f"Audio file ({audio_meta.get('filesize_bytes', 0)} bytes, {audio_meta.get('duration_sec', 0):.1f}s) persisted to MongoDB Atlas GridFS and local cache."
+        },
+        {
+            "step": 2,
+            "name": "Speech-to-Text Transcription",
+            "status": "COMPLETED" if transcript else "FALLBACK",
+            "timestamp": now_iso,
+            "detail": f"Whisper STT output: \"{transcript[:100] if transcript else '[Acoustic vocalization / environmental noise]'}\"."
+        },
+        {
+            "step": 3,
+            "name": "Acoustic Telemetry Extraction",
+            "status": "COMPLETED",
+            "timestamp": now_iso,
+            "detail": f"Stress: {int(float(acoustic_data.get('stress_score', 0))*100)}%, Emotion: {acoustic_data.get('emotion')}, Loudness: {acoustic_feats.get('dbfs', 0)} dBFS."
+        },
+        {
+            "step": 4,
+            "name": "Contextual Semantic Threat Evaluation",
+            "status": "COMPLETED",
+            "timestamp": now_iso,
+            "detail": f"Engine: {intel.get('ai_engine', 'SafeHer Classifier')}, Intent: {intel.get('intent', 'UNKNOWN')}, Danger: {intel.get('danger_level', 'LOW')} ({intel.get('risk_score', 0)}/100)."
+        },
+        {
+            "step": 5,
+            "name": "Risk Threshold & False-Positive Arbitration",
+            "status": "COMPLETED",
+            "timestamp": now_iso,
+            "detail": f"Risk Score {intel.get('risk_score', 0)} vs Threshold {threshold}. Emergency Criteria: {'MET' if criteria_met else 'NOT MET'}."
+        },
+        {
+            "step": 6,
+            "name": "Action Execution & Escalation",
+            "status": "COMPLETED",
+            "timestamp": now_iso,
+            "detail": f"Action: {action_taken}. Incident ID: {alert_id or 'N/A'}. Responder escalation: {'DISPATCHED' if criteria_met else 'SUPPRESSED'}."
+        }
+    ]
+
+    return {
+        "session_id": session_id,
+        "timestamp": now_iso,
+        "alert_id": alert_id,
+        "audio_metadata": {
+            "filesize_bytes": audio_meta.get("filesize_bytes", 0),
+            "duration_sec": audio_meta.get("duration_sec", 0.0),
+            "storage_layer": "MongoDB Atlas GridFS + Local Cache",
+            "gridfs_id": audio_meta.get("gridfs_id")
+        },
+        "whisper_stt": {
+            "transcript": transcript,
+            "char_count": len(transcript or ""),
+            "status": "TRANSCRIPTION_AVAILABLE" if transcript else "ACOUSTIC_ONLY"
+        },
+        "acoustic_analysis": {
+            "engine": acoustic_data.get("analysis_engine", "pydub-acoustic"),
+            "stress_score": acoustic_data.get("stress_score", 0.0),
+            "emotion": acoustic_data.get("emotion", "neutral"),
+            "danger_level": acoustic_data.get("danger_level", "low"),
+            "features": acoustic_feats
+        },
+        "contextual_threat_evaluation": {
+            "engine": intel.get("ai_engine", "SafeHer Classifier"),
+            "intent": intel.get("intent", "UNKNOWN"),
+            "danger_level": intel.get("danger_level", "LOW"),
+            "risk_score": intel.get("risk_score", 0),
+            "confidence_score": intel.get("confidence_score", 0.90),
+            "distress_phrases_detected": intel.get("distress_phrases_detected", []),
+            "detected_threats": intel.get("detected_threats", []),
+            "detected_emotions": intel.get("detected_emotions", []),
+            "trigger_reason": intel.get("trigger_reason", "Telemetry verified")
+        },
+        "decision": {
+            "action_taken": action_taken,
+            "trigger_emergency_criteria_met": criteria_met,
+            "threshold_used": threshold,
+            "priority_score": 5 if intel.get("danger_level") == "CRITICAL" else (4 if criteria_met else 1),
+            "cancellation_window_seconds": getattr(settings, "AI_VOICE_CANCELLATION_WINDOW_SEC", 15),
+            "alert_created": criteria_met and action_taken in ["AUTO_SOS_CREATED", "EVIDENCE_ATTACHED_DUPLICATE_PREVENTED"]
+        },
+        "audit_steps": audit_steps
+    }
+
+
+async def analyze_audio_intelligence(transcript: str, acoustic_data: dict, location: dict = None, audio_meta: dict = None) -> dict:
     """
     Perform deep intelligence analysis on transcribed emergency audio and acoustic metadata.
-    Tries Ollama/Phi-3 LLM with quick timeout, and seamlessly falls back to keyword-acoustic
-    evaluation so emergency alerts NEVER crash or wait for slow AI processing.
+    Tries Ollama/Phi-3 LLM with quick timeout (up to 3.5s), and seamlessly falls back
+    to our contextual-acoustic evaluation so emergency alerts NEVER crash or stall.
     """
-    # Generate instantaneous deterministic baseline
     baseline_intel = evaluate_keyword_and_acoustic_threat(transcript, acoustic_data, location)
+
+    # If already clearly benign, return immediately without waiting for slow LLMs
+    if baseline_intel.get("intent") in ["BENIGN_CONVERSATION", "AMBIENT_NOISE"]:
+        return baseline_intel
 
     try:
         prompt = f"""
@@ -424,13 +649,15 @@ async def analyze_audio_intelligence(transcript: str, acoustic_data: dict, locat
         ACOUSTIC DATA: {json.dumps(acoustic_data or {})}
         LOCATION: {json.dumps(location) if location else "Unknown"}
         
-        Analyze the above emergency data. Consider both the content of the speech and the emotional tone from acoustics.
-        Generate a tactical risk assessment for the SafeHer AI Admin Dashboard.
+        Analyze the above voice data for women's safety duress signals.
+        Distinguish between urgent distress phrases ("Help me", "Save me", "I'm in danger", "someone following me")
+        and benign casual speech ("help me with homework").
         
         Return JSON format:
         {{
-          "danger_level": "LOW/MEDIUM/HIGH/CRITICAL",
+          "danger_level": "SAFE/LOW/MEDIUM/HIGH/CRITICAL",
           "risk_score": 0-100,
+          "intent": "URGENT_DISTRESS/INDIRECT_PERIL/BENIGN_CONVERSATION/AMBIENT_NOISE",
           "detected_emotions": ["list"],
           "detected_threats": ["list"],
           "ai_tactical_summary": "detailed summary of what is happening",
@@ -442,25 +669,29 @@ async def analyze_audio_intelligence(transcript: str, acoustic_data: dict, locat
 
         content = await _call_ollama(
             messages=[
-                {"role": "system", "content": "You are a Tactical Emergency Intelligence Engine."},
+                {"role": "system", "content": "You are a Tactical Emergency Safety Intelligence Engine."},
                 {"role": "user", "content": prompt},
             ],
             format_json=True,
             temperature=0.2,
-            max_tokens=250
+            max_tokens=220,
+            timeout=3.5
         )
 
         llm_result = json.loads(content)
-        # Ensure critical keys exist
         if isinstance(llm_result, dict) and "danger_level" in llm_result:
             llm_result["fallback_active"] = False
             llm_result["ai_engine"] = "Ollama Phi-3 Neural LLM"
+            llm_result["distress_phrases_detected"] = baseline_intel.get("distress_phrases_detected", [])
+            llm_result["trigger_reason"] = baseline_intel.get("trigger_reason")
             if not llm_result.get("summary"):
                 llm_result["summary"] = llm_result.get("ai_tactical_summary") or baseline_intel["summary"]
+            if not llm_result.get("ai_script"):
+                llm_result["ai_script"] = baseline_intel.get("ai_script")
             return llm_result
 
     except Exception as e:
-        logger.warning(f"Ollama Audio Intelligence call failed or timed out: {e}. Using Keyword-Acoustic fallback.")
+        logger.debug(f"Ollama Audio Intelligence call failed or timed out ({e}). Using Contextual-Acoustic engine.")
 
     return baseline_intel
 

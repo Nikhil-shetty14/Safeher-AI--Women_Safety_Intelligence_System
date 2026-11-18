@@ -648,10 +648,21 @@ export default function SOSScreen({ navigation, route }: any) {
         if (activeAlertId) formData.append('alert_id', activeAlertId);
 
         const res = await sosAPI.triggerWithVoice(formData);
+        if (res.data?.alert?.id) {
+          setActiveAlertId(res.data.alert.id);
+        }
         if (res.data?.intelligence) {
           setAiIntelResult(res.data.intelligence);
         }
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        if (res.data?.auto_sos_created === false) {
+          Alert.alert(
+            'Safety Shield: Non-Emergency Verified',
+            `SafeHer AI analyzed your voice audio: "${res.data.transcript || 'Speech'}" was evaluated as safe/conversational. False alarm suppressed and emergency contacts were not disturbed.`,
+            [{ text: 'Understood' }]
+          );
+        } else {
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }
       }
     } catch (err: any) {
       console.error('Voice SOS upload failed:', err);

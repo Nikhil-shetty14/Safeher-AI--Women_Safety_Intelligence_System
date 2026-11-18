@@ -52,6 +52,7 @@ export const adminAPI = {
   deleteAlert: (id: string) => api.delete(`/api/admin/alerts/${id}`),
   getAlertIntelligence: (id: string) => api.get(`/api/admin/alerts/${id}/intelligence`),
   regenerateAlertIntelligence: (id: string) => api.post(`/api/admin/alerts/${id}/generate-intel`),
+  getAIDecisionLogs: (limit = 20) => api.get(`/api/ai/decision-logs?limit=${limit}`),
   importUsers: (data: any) => api.post('/api/admin/import/users', data),
   getComplaints: () => api.get('/api/complaints/admin/all'),
   updateComplaint: (id: string, data: any) => api.patch(`/api/complaints/admin/${id}`, data),

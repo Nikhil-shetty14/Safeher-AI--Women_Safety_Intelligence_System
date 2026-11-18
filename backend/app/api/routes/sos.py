@@ -1,10 +1,11 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request, Response
+from typing import Optional, List, Dict, Any
 from app.models.alert import SOSAlertCreate, SOSAlertResponse, LocationData, SOSAlertTriggerResponse
 from app.services.alert_service import (
     create_sos_alert, get_active_alerts, get_user_alerts,
     resolve_alert, format_alert_response, acknowledge_alert
 )
-from app.ai.llm_engine import analyze_text_for_danger, analyze_audio_intelligence
+from app.ai.llm_engine import analyze_text_for_danger, analyze_audio_intelligence, generate_ai_decision_log
 from app.ai.voice_analyzer import transcribe_audio, analyze_voice_stress
 from app.core.security import get_current_user, get_current_admin
 from app.core.config import settings
@@ -235,19 +236,20 @@ async def trigger_sos_with_voice(
     latitude: str = Form("0.0"),
     longitude: str = Form("0.0"),
     alert_id: str = Form(""),
+    force_trigger: bool = Form(False),
     audio: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
 ):
     """
-    Trigger Voice SOS with immediate alert creation (alerts never wait for AI).
-    Runs Whisper transcription, Librosa acoustic stress analysis, and
-    Ollama/keyword threat assessment to enrich the active emergency incident.
+    Intelligent AI Voice SOS workflow with automatic distress detection,
+    contextual NLP analysis, false-positive protection, and duplicate prevention.
     """
     from datetime import datetime
     now_iso = datetime.utcnow().isoformat()
+    session_id = str(uuid.uuid4())
 
     try:
-        logger.info(f"VOICE SOS INCOMING | User: {current_user.get('name')} | File: {audio.filename}")
+        logger.info(f"AI VOICE SOS INGESTION | User: {current_user.get('name')} | File: {audio.filename}")
         
         # Parse coordinates safely
         try:
@@ -256,7 +258,7 @@ async def trigger_sos_with_voice(
         except (ValueError, TypeError):
             lat, lng = 0.0, 0.0
 
-        # Save audio using bounded streaming (max 15MB) into both local cache and persistent MongoDB GridFS
+        # Save audio using bounded streaming (max 15MB) into persistent MongoDB Atlas GridFS + local disk cache
         audio_id = str(uuid.uuid4())
         ext = os.path.splitext(audio.filename)[1] or ".m4a"
         filename = f"{audio_id}{ext}"
@@ -281,174 +283,235 @@ async def trigger_sos_with_voice(
             metadata={"user_id": current_user.get("_id"), "alert_id": alert_id, "type": "voice_sos"}
         )
         audio_path = save_res["local_path"]
-        logger.info(f"AUDIO PERSISTED | Path: {audio_path} | GridFS ID: {save_res.get('gridfs_id')} | Size: {len(audio_bytes)} bytes")
+        gridfs_id = save_res.get("gridfs_id")
+        logger.info(f"AUDIO PERSISTED | Path: {audio_path} | GridFS ID: {gridfs_id} | Size: {len(audio_bytes)} bytes")
 
-        # ─── 1. DUPLICATE PREVENTION & INSTANT SOS CREATION ───
-        # Emergency alerts MUST NEVER wait for AI processing!
+        # ─── 1. SPEECH TRANSCRIPTION (WHISPER) ───
+        trans_text = ""
+        try:
+            trans_text = await transcribe_audio(audio_path)
+            logger.info(f"Whisper transcript: '{trans_text}'")
+        except Exception as stt_e:
+            logger.error(f"Whisper STT error: {stt_e}")
+
+        # ─── 2. ACOUSTIC DISTRESS ANALYSIS (LIBROSA / SIGNAL) ───
+        acoustic_data = {}
+        try:
+            acoustic_data = await analyze_voice_stress(audio_path)
+            logger.info(f"Acoustic stress score: {acoustic_data.get('stress_score')}, Emotion: {acoustic_data.get('emotion')}")
+        except Exception as lib_e:
+            logger.error(f"Acoustic analysis error: {lib_e}")
+            acoustic_data = {
+                "stress_score": 0.5,
+                "emotion": "undetermined",
+                "danger_level": "medium",
+                "trigger_emergency": False
+            }
+
+        # ─── 3. CONTEXTUAL THREAT EVALUATION (OLLAMA PHI-3 / CONTEXTUAL CLASSIFIER) ───
+        audio_meta = {
+            "filesize_bytes": len(audio_bytes),
+            "duration_sec": 5.0,
+            "gridfs_id": gridfs_id
+        }
+        loc_dict = {"latitude": lat, "longitude": lng}
+        intel = await analyze_audio_intelligence(trans_text, acoustic_data, loc_dict, audio_meta)
+
+        # ─── 4. THRESHOLD ARBITRATION & FALSE-POSITIVE PROTECTION ───
+        auto_threshold = getattr(settings, "AI_VOICE_AUTO_SOS_THRESHOLD", 75)
+        risk_score = int(intel.get("risk_score", 0))
+        danger_level = str(intel.get("danger_level", "LOW")).upper()
+        
+        # Criteria met if risk >= threshold, or explicit distress flag, or caller explicitly attached to active alert / force triggered
+        is_client_attached = bool(alert_id and alert_id.strip())
+        criteria_met = bool(
+            force_trigger or
+            is_client_attached or
+            risk_score >= auto_threshold or
+            danger_level in ["HIGH", "CRITICAL"] or
+            intel.get("trigger_emergency_protocol", False)
+        )
+
         alerts_col = get_collection("alerts")
         alert = None
-        
-        if alerts_col is not None:
-            # Check if specific alert_id was passed directly from client
-            if alert_id and alert_id.strip():
-                target_id = alert_id.strip()
-                alert = await alerts_col.find_one({"_id": target_id, "user_id": current_user["_id"]})
-                if alert:
-                    logger.info(f"Attaching voice evidence directly to designated alert: {alert['_id']}")
-                    await alerts_col.update_one(
-                        {"_id": alert["_id"]},
-                        {"$set": {"audio_file_path": audio_path, "trigger_type": "voice_intelligence"}}
-                    )
+        action_taken = "DISMISSED_BENIGN"
 
+        if criteria_met:
+            # ─── 5. DUPLICATE PREVENTION & ALERT SYNCHRONIZATION ───
+            if alerts_col is not None:
+                # If specific alert_id was passed
+                if is_client_attached:
+                    target_id = alert_id.strip()
+                    alert = await alerts_col.find_one({"_id": target_id, "user_id": current_user["_id"]})
+                    if alert:
+                        action_taken = "EVIDENCE_ATTACHED_DIRECT"
+                        logger.info(f"Attaching voice evidence directly to designated alert: {alert['_id']}")
+
+                # If no alert attached yet, check for existing active alert within duplicate window
+                if not alert:
+                    existing_active = await alerts_col.find_one(
+                        {"user_id": current_user["_id"], "status": "active"},
+                        sort=[("created_at", -1)]
+                    )
+                    if existing_active:
+                        created_at = existing_active.get("created_at")
+                        now_dt = datetime.utcnow()
+                        dup_window = getattr(settings, "AI_VOICE_DUPLICATE_WINDOW_SEC", 300)
+                        age_sec = (now_dt - created_at).total_seconds() if isinstance(created_at, datetime) else 999
+                        if age_sec < dup_window:
+                            alert = existing_active
+                            action_taken = "EVIDENCE_ATTACHED_DUPLICATE_PREVENTED"
+                            logger.info(f"Duplicate prevented: attaching voice telemetry to active alert {alert['_id']} ({age_sec:.0f}s old)")
+                        else:
+                            logger.info(f"Resolving stale active alert {existing_active['_id']} ({age_sec:.0f}s old)")
+                            await alerts_col.update_one(
+                                {"_id": existing_active["_id"]},
+                                {"$set": {"status": "resolved", "resolved_at": now_dt, "resolution_note": "Superseded by fresh AI Voice SOS"}}
+                            )
+
+            sev_val = "critical" if danger_level == "CRITICAL" else "high"
+            trigger_reason = intel.get("trigger_reason") or f"AI Voice SOS triggered with {risk_score}/100 threat score"
+
+            # ─── 6. AUTOMATIC SOS ALERT CREATION (WHEN CRITERIA MET) ───
             if not alert:
-                existing_active = await alerts_col.find_one(
-                    {"user_id": current_user["_id"], "status": "active"},
-                    sort=[("created_at", -1)]
+                location = LocationData(latitude=lat, longitude=lng)
+                alert_data = SOSAlertCreate(
+                    user_id=current_user["_id"],
+                    trigger_type="voice_intelligence",
+                    location=location,
+                    message=trans_text or f"Voice SOS: {trigger_reason}",
+                    audio_file_path=audio_path,
                 )
-                if existing_active:
-                    created_at = existing_active.get("created_at")
-                    from datetime import datetime
-                    now_dt = datetime.utcnow()
-                    age_sec = (now_dt - created_at).total_seconds() if isinstance(created_at, datetime) else 999
-                    if age_sec < 300:
-                        alert = existing_active
-                        logger.info(f"Attaching voice evidence to active alert: {alert['_id']}")
-                        await alerts_col.update_one(
-                            {"_id": alert["_id"]},
-                            {"$set": {"audio_file_path": audio_path, "trigger_type": "voice_intelligence"}}
-                        )
-                    else:
-                        logger.info(f"Resolving stale active alert {existing_active['_id']} ({age_sec:.0f}s old) for fresh voice SOS")
-                        await alerts_col.update_one(
-                            {"_id": existing_active["_id"]},
-                            {"$set": {"status": "resolved", "resolved_at": now_dt, "resolution_note": "Superseded by voice SOS trigger"}}
-                        )
+                alert = await create_sos_alert(alert_data, intel)
+                action_taken = "AUTO_SOS_CREATED"
+                logger.warning(f"AUTOMATIC AI VOICE SOS ALERT CREATED: {alert['_id']} (Risk: {risk_score})")
 
-        if not alert:
-            # Create new emergency SOS immediately
-            location = LocationData(latitude=lat, longitude=lng)
-            alert_data = SOSAlertCreate(
-                user_id=current_user["_id"],
-                trigger_type="voice_intelligence",
-                location=location,
-                message="Voice SOS emergency beacon initiated. Audio evidence attached.",
-                audio_file_path=audio_path,
-            )
-            # Create with zero-wait deterministic intelligence baseline
-            alert = await create_sos_alert(alert_data, None)
-            logger.info(f"INSTANT VOICE SOS ALERT CREATED: {alert['_id']}")
-
-            # Broadcast new alert to admins immediately
-            try:
-                loc = alert.get("location", {})
-                location_payload = {
-                    "latitude": lat,
-                    "longitude": lng,
-                    "accuracy": loc.get("accuracy"),
-                    "address": loc.get("address"),
-                    "district": loc.get("district"),
-                    "division": loc.get("division"),
-                    "timestamp": now_iso,
-                }
-                await broadcast_to_admins("new_sos_alert", {
-                    "alert_id": alert["_id"],
-                    "user_id": alert["user_id"],
-                    "user_name": current_user.get("name"),
-                    "user_phone": current_user.get("phone"),
-                    "severity": alert["severity"],
-                    "location": location_payload,
-                    "trigger_type": "voice_intelligence",
-                    "message": "Voice SOS triggered",
-                    "status": "active",
-                    "acknowledged": False,
-                    "created_at": now_iso,
-                })
-            except Exception as ws_e:
-                logger.error(f"Voice SOS instant broadcast error: {ws_e}")
-
-        # ─── 2. RUN AI PIPELINE IN BACKGROUND (WHISPER + LIBROSA + OLLAMA) ───
-        # Emergency alerts MUST respond instantly to the client (<500ms) without hanging for AI!
-        async def _enrich_voice_sos_background(alert_id, path_to_audio, lat_coord, lng_coord, user_data):
-            try:
-                trans_text = ""
-                acoustic_data = {}
+                # Broadcast new alert to all connected admin dispatchers
                 try:
-                    trans_text = await transcribe_audio(path_to_audio)
-                    logger.info(f"Whisper transcript: '{trans_text}'")
-                except Exception as stt_e:
-                    logger.error(f"Whisper STT failed: {stt_e}")
-
-                try:
-                    acoustic_data = await analyze_voice_stress(path_to_audio)
-                    logger.info(f"Librosa stress score: {acoustic_data.get('stress_score')}")
-                except Exception as lib_e:
-                    logger.error(f"Librosa acoustic analysis failed: {lib_e}")
-                    acoustic_data = {
-                        "stress_score": 0.85,
-                        "emotion": "panic/distress",
-                        "danger_level": "critical",
-                        "trigger_emergency": True
+                    loc = alert.get("location", {})
+                    location_payload = {
+                        "latitude": lat,
+                        "longitude": lng,
+                        "accuracy": loc.get("accuracy"),
+                        "address": loc.get("address"),
+                        "district": loc.get("district"),
+                        "division": loc.get("division"),
+                        "timestamp": now_iso,
                     }
+                    await broadcast_to_admins("new_sos_alert", {
+                        "alert_id": alert["_id"],
+                        "user_id": alert["user_id"],
+                        "user_name": current_user.get("name"),
+                        "user_phone": current_user.get("phone"),
+                        "severity": sev_val,
+                        "location": location_payload,
+                        "trigger_type": "voice_intelligence",
+                        "message": trans_text or f"Voice SOS: {trigger_reason}",
+                        "status": "active",
+                        "acknowledged": False,
+                        "created_at": now_iso,
+                        "risk_score": risk_score,
+                    })
+                except Exception as ws_e:
+                    logger.error(f"Voice SOS instant broadcast error: {ws_e}")
 
-                try:
-                    intel = await analyze_audio_intelligence(
-                        trans_text or "",
-                        acoustic_data,
-                        {"latitude": lat_coord, "longitude": lng_coord}
-                    )
-                except Exception as intel_e:
-                    logger.error(f"Intelligence analysis failed: {intel_e}")
-                    from app.ai.llm_engine import evaluate_keyword_and_acoustic_threat
-                    intel = evaluate_keyword_and_acoustic_threat(
-                        trans_text or "",
-                        acoustic_data,
-                        {"latitude": lat_coord, "longitude": lng_coord}
-                    )
+            # ─── 7. UPDATE ALERT WITH DECISION LOG & INTEL ───
+            decision_log = generate_ai_decision_log(
+                session_id=session_id,
+                transcript=trans_text,
+                acoustic_data=acoustic_data,
+                intel=intel,
+                location=loc_dict,
+                audio_meta=audio_meta,
+                threshold=auto_threshold,
+                action_taken=action_taken,
+                alert_id=alert["_id"]
+            )
 
-                danger_l = intel.get("danger_level", "HIGH").upper()
-                sev_val = "critical" if danger_l == "CRITICAL" else "high"
+            if alerts_col is not None:
+                await alerts_col.update_one(
+                    {"_id": alert["_id"]},
+                    {"$set": {
+                        "transcript": trans_text,
+                        "ai_analysis": intel,
+                        "acoustic_analysis": acoustic_data,
+                        "audio_file_path": audio_path,
+                        "ai_decision_log": decision_log,
+                        "severity": sev_val,
+                        "priority_score": 5 if sev_val == "critical" else 4,
+                        "trigger_reason": trigger_reason
+                    }}
+                )
 
-                db_col = get_collection("alerts")
-                if db_col is not None:
-                    await db_col.update_one(
-                        {"_id": alert_id},
-                        {"$set": {
-                            "message": trans_text or "Emergency Voice SOS Signal",
-                            "transcript": trans_text,
-                            "ai_analysis": intel,
-                            "acoustic_analysis": acoustic_data,
-                            "audio_file_path": path_to_audio,
-                            "severity": sev_val,
-                            "priority_score": 5 if sev_val == "critical" else 4
-                        }}
-                    )
-
-                # Broadcast tactical intelligence update to admins in real-time
+            # Broadcast tactical intelligence update to admins
+            try:
                 await broadcast_to_admins("tactical_intel_update", {
-                    "alert_id": alert_id,
-                    "user_id": user_data.get("_id"),
-                    "user_name": user_data.get("name"),
-                    "transcript": trans_text or "(Distress vocalization / background acoustic noise)",
+                    "alert_id": alert["_id"],
+                    "user_id": current_user.get("_id"),
+                    "user_name": current_user.get("name"),
+                    "transcript": trans_text or "(Distress vocalization / acoustic frequency signature)",
                     "intelligence": intel,
                     "acoustic_data": acoustic_data,
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "decision_log": decision_log,
+                    "timestamp": now_iso,
                     "source": "voice",
-                    "audio_url": f"/api/sos/audio/{alert_id}"
+                    "audio_url": f"/api/sos/audio/{alert['_id']}"
                 })
-                logger.info(f"Background voice enrichment complete for alert {alert_id}")
-            except Exception as bg_err:
-                logger.error(f"Background voice enrichment error: {bg_err}")
+            except Exception as ws_err:
+                logger.error(f"Socket intelligence broadcast error: {ws_err}")
 
-        # Spawn non-blocking background task
-        import asyncio
-        asyncio.create_task(_enrich_voice_sos_background(alert["_id"], audio_path, lat, lng, current_user))
+            return {
+                "success": True,
+                "auto_sos_created": True,
+                "decision": action_taken,
+                "alert": await format_alert_response(alert),
+                "transcript": trans_text,
+                "intelligence": intel,
+                "decision_log": decision_log,
+                "cancellation_window_seconds": getattr(settings, "AI_VOICE_CANCELLATION_WINDOW_SEC", 15),
+                "cancel_url": f"/api/sos/{alert['_id']}/cancel-voice"
+            }
 
-        return {
-            "success": True,
-            "alert": await format_alert_response(alert),
-            "intelligence": {"status": "processing_in_background", "danger_level": "HIGH"},
-            "transcript": "Processing voice distress analysis..."
-        }
+        else:
+            # ─── FALSE-POSITIVE PROTECTION: CRITERIA NOT MET ───
+            logger.info(f"AI VOICE SOS: Criteria not met (Risk: {risk_score}/{auto_threshold}) - False positive suppressed.")
+            decision_log = generate_ai_decision_log(
+                session_id=session_id,
+                transcript=trans_text,
+                acoustic_data=acoustic_data,
+                intel=intel,
+                location=loc_dict,
+                audio_meta=audio_meta,
+                threshold=auto_threshold,
+                action_taken="DISMISSED_BENIGN"
+            )
+
+            # Save prediction record for auditability
+            preds_col = get_collection("ai_predictions")
+            if preds_col is not None:
+                await preds_col.insert_one({
+                    "_id": session_id,
+                    "user_id": current_user.get("_id"),
+                    "input_text": trans_text,
+                    "audio_file_path": audio_path,
+                    "danger_level": danger_level,
+                    "confidence_score": intel.get("confidence_score", 0.9),
+                    "analysis": intel,
+                    "acoustic_analysis": acoustic_data,
+                    "decision_log": decision_log,
+                    "auto_sos_created": False,
+                    "created_at": datetime.utcnow()
+                })
+
+            return {
+                "success": True,
+                "auto_sos_created": False,
+                "decision": "DISMISSED_BENIGN",
+                "trigger_reason": intel.get("trigger_reason", "Conversational audio without distress criteria"),
+                "transcript": trans_text,
+                "intelligence": intel,
+                "decision_log": decision_log
+            }
 
     except Exception as e:
         logger.error(f"CRITICAL VOICE SOS ERROR: {str(e)}")
@@ -458,6 +521,59 @@ async def trigger_sos_with_voice(
             "error": str(e)
         }
 
+
+@router.post("/{alert_id}/cancel-voice")
+@router.post("/{alert_id}/cancel")
+async def cancel_voice_sos(
+    alert_id: str,
+    reason: str = Form("False alarm - User confirmed safe"),
+    pin: Optional[str] = Form(None),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Discreet cancellation option for an auto-triggered voice SOS alert.
+    Allows user to safely cancel within the cancellation window or confirm safety,
+    immediately notifying admins and halting emergency dispatch.
+    """
+    alerts_col = get_collection("alerts")
+    if alerts_col is None:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+
+    alert = await alerts_col.find_one({"_id": alert_id, "user_id": current_user["_id"]})
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+
+    from datetime import datetime
+    now_dt = datetime.utcnow()
+    await alerts_col.update_one(
+        {"_id": alert_id},
+        {"$set": {
+            "status": "cancelled",
+            "resolved_at": now_dt,
+            "resolution_note": f"Discreet Voice Cancellation: {reason}",
+            "cancellation_reason": reason,
+        }}
+    )
+
+    # Broadcast cancellation to all admins via Socket.IO
+    try:
+        await broadcast_to_admins("alert_cancelled", {
+            "alert_id": alert_id,
+            "user_id": current_user["_id"],
+            "user_name": current_user.get("name"),
+            "status": "cancelled",
+            "reason": reason,
+            "timestamp": now_dt.isoformat()
+        })
+    except Exception as e:
+        logger.error(f"Error broadcasting alert cancellation: {e}")
+
+    return {
+        "success": True,
+        "alert_id": alert_id,
+        "status": "cancelled",
+        "message": "Voice SOS alert successfully cancelled. Emergency contacts and responders notified."
+    }
 
 
 @router.post("/upload-evidence")

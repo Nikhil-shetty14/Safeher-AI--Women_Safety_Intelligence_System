@@ -554,21 +554,58 @@ function AIIntelligenceCenterContent() {
 
           {/* Voice Intelligence */}
           {bottomTab === "Voice" && (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
-              <div style={{ padding: 20, borderRadius: 12, background: "#1e293b", textAlign: "center" }}>
-                <Mic size={24} style={{ color: "#f59e0b", margin: "0 auto 8px" }} />
-                <div style={{ fontSize: 28, fontWeight: 800, color: "#f8fafc" }}>{stats?.voice_analysis?.stress_markers_detected ?? 0}</div>
-                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, marginTop: 4, textTransform: "uppercase" }}>Stress Markers</div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+                <div style={{ padding: 20, borderRadius: 12, background: "#1e293b", textAlign: "center" }}>
+                  <Mic size={24} style={{ color: "#f59e0b", margin: "0 auto 8px" }} />
+                  <div style={{ fontSize: 28, fontWeight: 800, color: "#f8fafc" }}>{stats?.voice_analysis?.stress_markers_detected ?? 0}</div>
+                  <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, marginTop: 4, textTransform: "uppercase" }}>Stress Markers</div>
+                </div>
+                <div style={{ padding: 20, borderRadius: 12, background: "#1e293b", textAlign: "center" }}>
+                  <Shield size={24} style={{ color: "#ef4444", margin: "0 auto 8px" }} />
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#fca5a5" }}>{stats?.voice_analysis?.primary_emotion ?? "—"}</div>
+                  <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, marginTop: 4, textTransform: "uppercase" }}>Primary Emotion</div>
+                </div>
+                <div style={{ padding: 20, borderRadius: 12, background: "#1e293b", textAlign: "center" }}>
+                  <BarChartIcon size={24} style={{ color: "#8b5cf6", margin: "0 auto 8px" }} />
+                  <div style={{ fontSize: 28, fontWeight: 800, color: "#c4b5fd" }}>{stats?.voice_analysis?.accuracy ?? "—"}</div>
+                  <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, marginTop: 4, textTransform: "uppercase" }}>AI Audio Accuracy</div>
+                </div>
               </div>
-              <div style={{ padding: 20, borderRadius: 12, background: "#1e293b", textAlign: "center" }}>
-                <Shield size={24} style={{ color: "#ef4444", margin: "0 auto 8px" }} />
-                <div style={{ fontSize: 18, fontWeight: 800, color: "#fca5a5" }}>{stats?.voice_analysis?.primary_emotion ?? "—"}</div>
-                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, marginTop: 4, textTransform: "uppercase" }}>Primary Emotion</div>
-              </div>
-              <div style={{ padding: 20, borderRadius: 12, background: "#1e293b", textAlign: "center" }}>
-                <BarChartIcon size={24} style={{ color: "#8b5cf6", margin: "0 auto 8px" }} />
-                <div style={{ fontSize: 28, fontWeight: 800, color: "#c4b5fd" }}>{stats?.voice_analysis?.accuracy ?? "—"}</div>
-                <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, marginTop: 4, textTransform: "uppercase" }}>AI Audio Accuracy</div>
+
+              {/* Real-time Voice SOS Decision Status & Configured Phrases */}
+              <div style={{ padding: 16, borderRadius: 12, background: "#0b1120", border: "1px solid #1e293b" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <BrainCircuit size={16} style={{ color: "#a855f7" }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#e2e8f0", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                      Voice Distress Detection & Intent Engine Status
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: "rgba(34,197,94,0.15)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.3)" }}>
+                      Auto-SOS Threshold: ≥75/100
+                    </span>
+                    <span style={{ padding: "3px 8px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: "rgba(168,85,247,0.15)", color: "#c084fc", border: "1px solid rgba(168,85,247,0.3)" }}>
+                      False-Positive Shield: Active
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
+                  <span style={{ fontSize: 10, color: "#94a3b8", fontWeight: 600, alignSelf: "center", marginRight: 4 }}>
+                    Active Distress Lexicon:
+                  </span>
+                  {["Help me", "Save me", "I'm in danger", "Someone is following me", "Call police", "Bachao", "Madad karo"].map((phrase, idx) => (
+                    <span key={idx} style={{ padding: "2px 8px", borderRadius: 6, fontSize: 10, fontWeight: 600, background: "rgba(239,68,68,0.12)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)" }}>
+                      "{phrase}"
+                    </span>
+                  ))}
+                </div>
+
+                <p style={{ fontSize: 11, color: "#64748b", margin: 0, lineHeight: 1.5 }}>
+                  Continuous multi-modal arbitration combining Whisper transcript contextual semantics, Librosa vocal stress telemetry (RMS, pitch, dBFS), and emergency phrase matching. Casual speech (e.g. "help me with homework") and background noise are filtered automatically to prevent false dispatches.
+                </p>
               </div>
             </div>
           )}

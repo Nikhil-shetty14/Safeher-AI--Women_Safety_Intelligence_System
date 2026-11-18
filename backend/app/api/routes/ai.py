@@ -1,10 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from app.models.ai_prediction import AIPredictionCreate, ChatMessage
-from app.ai.llm_engine import analyze_text_for_danger, chat_with_safeher, predict_area_risk, _call_ollama
+from app.ai.llm_engine import (
+    analyze_text_for_danger,
+    chat_with_safeher,
+    predict_area_risk,
+    _call_ollama,
+    analyze_audio_intelligence,
+    generate_ai_decision_log
+)
 from app.ai.voice_analyzer import transcribe_audio, analyze_voice_stress
 from app.services.alert_service import create_sos_alert
+from app.services.media_storage import save_media_file
+from app.websockets.socket_manager import broadcast_to_admins
 from app.models.alert import SOSAlertCreate, LocationData
-from app.core.security import get_current_user
+from app.core.security import get_current_user, get_current_admin
 from app.core.database import get_collection
 from app.core.config import settings
 import uuid
@@ -70,95 +79,264 @@ async def analyze_text(
 
 @router.post("/analyze-voice")
 async def analyze_voice(
+    latitude: str = Form("0.0"),
+    longitude: str = Form("0.0"),
+    alert_id: str = Form(""),
+    force_trigger: bool = Form(False),
     audio: UploadFile = File(...),
     current_user: dict = Depends(get_current_user)
 ):
-    """Upload audio for Whisper transcription + stress analysis."""
-    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
-    audio_path = os.path.join(settings.UPLOAD_DIR, f"{uuid.uuid4()}.wav")
+    """
+    Upload and analyze voice audio with Whisper transcription, Librosa acoustic telemetry,
+    contextual NLP threat classification, and automatic SOS emergency triggering.
+    """
+    from datetime import datetime
+    now_iso = datetime.utcnow().isoformat()
+    session_id = str(uuid.uuid4())
+
+    try:
+        lat = float(latitude)
+        lng = float(longitude)
+    except (ValueError, TypeError):
+        lat, lng = 0.0, 0.0
+
+    # Save audio stream to persistent MongoDB Atlas GridFS + local disk cache
+    audio_id = str(uuid.uuid4())
+    ext = os.path.splitext(audio.filename)[1] or ".m4a"
+    filename = f"{audio_id}{ext}"
 
     MAX_AUDIO_BYTES = 15 * 1024 * 1024
+    chunks = []
     total_read = 0
-    async with aiofiles.open(audio_path, "wb") as f:
-        while True:
-            chunk = await audio.read(65536)
-            if not chunk:
-                break
-            total_read += len(chunk)
-            if total_read > MAX_AUDIO_BYTES:
-                await f.close()
-                if os.path.exists(audio_path):
-                    os.remove(audio_path)
-                raise HTTPException(status_code=413, detail="Audio file exceeds 15MB limit")
-            await f.write(chunk)
+    while True:
+        chunk = await audio.read(65536)
+        if not chunk:
+            break
+        total_read += len(chunk)
+        if total_read > MAX_AUDIO_BYTES:
+            raise HTTPException(status_code=413, detail="Audio file exceeds 15MB limit")
+        chunks.append(chunk)
 
+    audio_bytes = b"".join(chunks)
+    save_res = await save_media_file(
+        audio_bytes,
+        filename,
+        content_type="audio/mp4" if ext == ".m4a" else None,
+        metadata={"user_id": current_user.get("_id"), "alert_id": alert_id, "type": "voice_analysis"}
+    )
+    audio_path = save_res["local_path"]
+    gridfs_id = save_res.get("gridfs_id")
+
+    # 1. Speech Transcription (Whisper)
     transcript = ""
     try:
         transcript = await transcribe_audio(audio_path)
     except Exception as e:
         logger.error(f"Audio transcription error: {e}")
 
-    voice_result = {"danger_level": "safe", "stress_score": 0}
+    # 2. Acoustic Telemetry (Librosa / Pure Python signal)
+    voice_result = {"danger_level": "safe", "stress_score": 0.0}
     try:
         voice_result = await analyze_voice_stress(audio_path)
     except Exception as e:
         logger.error(f"Voice stress analysis error: {e}")
 
-    # Also run text analysis on transcript
-    text_result = {}
-    if transcript:
-        try:
-            text_result = await analyze_text_for_danger(transcript)
-        except Exception as e:
-            logger.error(f"Text analysis on transcript error: {e}")
+    # 3. Contextual Threat Classification (Ollama Phi-3 / Contextual Classifier)
+    audio_meta = {
+        "filesize_bytes": len(audio_bytes),
+        "duration_sec": 5.0,
+        "gridfs_id": gridfs_id
+    }
+    loc_dict = {"latitude": lat, "longitude": lng}
+    intel = await analyze_audio_intelligence(transcript, voice_result, loc_dict, audio_meta)
 
-    DANGER_LEVELS = ["safe", "low", "medium", "high", "critical"]
-    def _danger_rank(val):
-        v = str(val or "safe").lower()
-        return DANGER_LEVELS.index(v) if v in DANGER_LEVELS else 0
+    # 4. Threshold & Emergency Arbitration
+    auto_threshold = getattr(settings, "AI_VOICE_AUTO_SOS_THRESHOLD", 75)
+    risk_score = int(intel.get("risk_score", 0))
+    danger_level = str(intel.get("danger_level", "LOW")).upper()
 
-    combined_danger = max(
-        voice_result.get("danger_level", "safe").lower(),
-        text_result.get("danger_level", "safe").lower(),
-        key=_danger_rank
+    is_client_attached = bool(alert_id and alert_id.strip())
+    criteria_met = bool(
+        force_trigger or
+        is_client_attached or
+        risk_score >= auto_threshold or
+        danger_level in ["HIGH", "CRITICAL"] or
+        intel.get("trigger_emergency_protocol", False)
     )
 
-    await _save_prediction(current_user["_id"], transcript, audio_path, {
-        "danger_level": combined_danger,
-        "voice": voice_result,
-        "text": text_result,
-    })
+    alerts_col = get_collection("alerts")
+    alert = None
+    action_taken = "DISMISSED_BENIGN"
 
-    # Determine if an automatic SOS should be triggered
-    auto_sos_created = False
-    if _should_auto_sos(combined_danger, voice_result.get("trigger_emergency") or text_result.get("trigger_emergency", False)):
-        # Minimal location (fallback to 0,0) – real coordinates can be added later
-        loc = LocationData(latitude=0.0, longitude=0.0)
-        sos_data = SOSAlertCreate(
-            user_id=current_user["_id"],
-            trigger_type="voice_intelligence",
-            location=loc,
-            message=transcript,
+    if criteria_met:
+        # Check duplicate prevention
+        if alerts_col is not None:
+            if is_client_attached:
+                alert = await alerts_col.find_one({"_id": alert_id.strip(), "user_id": current_user["_id"]})
+                if alert:
+                    action_taken = "EVIDENCE_ATTACHED_DIRECT"
+            if not alert:
+                existing_active = await alerts_col.find_one(
+                    {"user_id": current_user["_id"], "status": "active"},
+                    sort=[("created_at", -1)]
+                )
+                if existing_active:
+                    created_at = existing_active.get("created_at")
+                    age_sec = (datetime.utcnow() - created_at).total_seconds() if isinstance(created_at, datetime) else 999
+                    if age_sec < getattr(settings, "AI_VOICE_DUPLICATE_WINDOW_SEC", 300):
+                        alert = existing_active
+                        action_taken = "EVIDENCE_ATTACHED_DUPLICATE_PREVENTED"
+
+        sev_val = "critical" if danger_level == "CRITICAL" else "high"
+        trigger_reason = intel.get("trigger_reason") or f"Voice duress: {risk_score}/100 threat score"
+
+        if not alert:
+            loc = LocationData(latitude=lat, longitude=lng)
+            sos_data = SOSAlertCreate(
+                user_id=current_user["_id"],
+                trigger_type="voice_intelligence",
+                location=loc,
+                message=transcript or f"Voice SOS: {trigger_reason}",
+                audio_file_path=audio_path,
+            )
+            alert = await create_sos_alert(sos_data, intel)
+            action_taken = "AUTO_SOS_CREATED"
+
+            try:
+                location_payload = {
+                    "latitude": lat,
+                    "longitude": lng,
+                    "accuracy": alert.get("location", {}).get("accuracy"),
+                    "address": alert.get("location", {}).get("address"),
+                    "district": alert.get("location", {}).get("district"),
+                    "division": alert.get("location", {}).get("division"),
+                    "timestamp": now_iso,
+                }
+                await broadcast_to_admins("new_sos_alert", {
+                    "alert_id": alert["_id"],
+                    "user_id": alert["user_id"],
+                    "user_name": current_user.get("name"),
+                    "user_phone": current_user.get("phone"),
+                    "severity": sev_val,
+                    "location": location_payload,
+                    "trigger_type": "voice_intelligence",
+                    "message": transcript or f"Voice SOS: {trigger_reason}",
+                    "status": "active",
+                    "acknowledged": False,
+                    "created_at": now_iso,
+                    "risk_score": risk_score,
+                })
+            except Exception as ws_err:
+                logger.error(f"Voice SOS broadcast error: {ws_err}")
+
+        decision_log = generate_ai_decision_log(
+            session_id=session_id,
+            transcript=transcript,
+            acoustic_data=voice_result,
+            intel=intel,
+            location=loc_dict,
+            audio_meta=audio_meta,
+            threshold=auto_threshold,
+            action_taken=action_taken,
+            alert_id=alert["_id"]
         )
-        intelligence = {
-            "danger_level": combined_danger,
-            "voice": voice_result,
-            "text": text_result,
-        }
-        await create_sos_alert(sos_data, intelligence)
-        auto_sos_created = True
+
+        if alerts_col is not None:
+            await alerts_col.update_one(
+                {"_id": alert["_id"]},
+                {"$set": {
+                    "transcript": transcript,
+                    "ai_analysis": intel,
+                    "acoustic_analysis": voice_result,
+                    "audio_file_path": audio_path,
+                    "ai_decision_log": decision_log,
+                    "severity": sev_val,
+                    "priority_score": 5 if sev_val == "critical" else 4,
+                    "trigger_reason": trigger_reason
+                }}
+            )
+
+        try:
+            await broadcast_to_admins("tactical_intel_update", {
+                "alert_id": alert["_id"],
+                "user_id": current_user.get("_id"),
+                "user_name": current_user.get("name"),
+                "transcript": transcript or "(Distress vocalization signature)",
+                "intelligence": intel,
+                "acoustic_data": voice_result,
+                "decision_log": decision_log,
+                "timestamp": now_iso,
+                "source": "voice",
+                "audio_url": f"/api/sos/audio/{alert['_id']}"
+            })
+        except Exception as ws_err:
+            logger.error(f"Socket intelligence broadcast error: {ws_err}")
+
+    else:
+        # False alarm suppressed
+        decision_log = generate_ai_decision_log(
+            session_id=session_id,
+            transcript=transcript,
+            acoustic_data=voice_result,
+            intel=intel,
+            location=loc_dict,
+            audio_meta=audio_meta,
+            threshold=auto_threshold,
+            action_taken="DISMISSED_BENIGN"
+        )
+
+    # Always persist prediction record
+    await _save_prediction(current_user["_id"], transcript, audio_path, {
+        "danger_level": danger_level,
+        "voice": voice_result,
+        "intelligence": intel,
+        "decision_log": decision_log,
+        "auto_sos_created": criteria_met,
+    })
 
     return {
         "transcript": transcript,
-        "stress_level": voice_result.get("stress_level"),
-        "emotion": voice_result.get("emotion") or text_result.get("emotion", "neutral"),
-        "danger_level": combined_danger,
-        "confidence": voice_result.get("confidence", 0) or text_result.get("risk_score", 0),
-        "trigger_emergency": voice_result.get("trigger_emergency") or text_result.get("trigger_emergency", False),
-        "suggested_action": text_result.get("recommended_action", "Stay calm and stay aware."),
+        "stress_level": voice_result.get("stress_score", 0.0),
+        "emotion": voice_result.get("emotion") or intel.get("emotion", "neutral"),
+        "danger_level": danger_level,
+        "confidence": intel.get("confidence_score", 0.90),
+        "risk_score": risk_score,
+        "trigger_emergency": criteria_met,
+        "trigger_reason": intel.get("trigger_reason"),
+        "suggested_action": intel.get("suggested_action") or (intel.get("recommendations", ["Stay alert"])[0] if intel.get("recommendations") else "Stay alert"),
         "audio_path": audio_path,
-        "auto_sos_created": auto_sos_created,
+        "auto_sos_created": criteria_met,
+        "alert_id": alert["_id"] if alert else None,
+        "decision_log": decision_log,
+        "cancellation_window_seconds": getattr(settings, "AI_VOICE_CANCELLATION_WINDOW_SEC", 15) if criteria_met else 0
     }
+
+
+@router.get("/decision-logs")
+async def get_ai_decision_logs(
+    limit: int = 20,
+    current_admin: dict = Depends(get_current_admin)
+):
+    """Fetch recent AI Voice SOS decision logs and audit trail for the admin dashboard."""
+    alerts_col = get_collection("alerts")
+    preds_col = get_collection("ai_predictions")
+    logs = []
+
+    if alerts_col is not None:
+        cursor = alerts_col.find(
+            {"ai_decision_log": {"$exists": True, "$ne": None}},
+            sort=[("created_at", -1)]
+        ).limit(limit)
+        alerts = await cursor.to_list(length=limit)
+        for a in alerts:
+            d_log = a.get("ai_decision_log", {})
+            d_log["alert_id"] = a["_id"]
+            d_log["user_id"] = a.get("user_id")
+            d_log["user_name"] = a.get("user_name")
+            d_log["status"] = a.get("status")
+            logs.append(d_log)
+
+    return {"logs": logs}
 
 
 @router.post("/chat")
