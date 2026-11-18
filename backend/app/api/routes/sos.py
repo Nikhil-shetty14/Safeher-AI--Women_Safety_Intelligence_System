@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File, Form, Request, Response
 from app.models.alert import SOSAlertCreate, SOSAlertResponse, LocationData, SOSAlertTriggerResponse
 from app.services.alert_service import (
     create_sos_alert, get_active_alerts, get_user_alerts,
@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.websockets.socket_manager import broadcast_to_admins
 from app.core.database import get_collection
 from app.api.routes.admin import get_alert_filter
+from app.services.media_storage import save_media_file, handle_photo_stream_response, handle_audio_stream_response
 from loguru import logger
 import os, uuid, aiofiles, traceback, shutil
 from fastapi import Body
@@ -255,28 +256,32 @@ async def trigger_sos_with_voice(
         except (ValueError, TypeError):
             lat, lng = 0.0, 0.0
 
-        # Save audio using bounded streaming (max 15MB) to protect RAM and disk
-        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+        # Save audio using bounded streaming (max 15MB) into both local cache and persistent MongoDB GridFS
         audio_id = str(uuid.uuid4())
         ext = os.path.splitext(audio.filename)[1] or ".m4a"
-        audio_path = os.path.join(settings.UPLOAD_DIR, f"{audio_id}{ext}")
+        filename = f"{audio_id}{ext}"
 
         MAX_AUDIO_BYTES = 15 * 1024 * 1024
+        chunks = []
         total_read = 0
-        with open(audio_path, "wb") as buffer:
-            while True:
-                chunk = await audio.read(65536)
-                if not chunk:
-                    break
-                total_read += len(chunk)
-                if total_read > MAX_AUDIO_BYTES:
-                    buffer.close()
-                    if os.path.exists(audio_path):
-                        os.remove(audio_path)
-                    return {"success": False, "error": "Audio file exceeds 15MB limit"}
-                buffer.write(chunk)
-        
-        logger.info(f"FILE SAVED | Path: {audio_path} | Size: {os.path.getsize(audio_path)} bytes")
+        while True:
+            chunk = await audio.read(65536)
+            if not chunk:
+                break
+            total_read += len(chunk)
+            if total_read > MAX_AUDIO_BYTES:
+                return {"success": False, "error": "Audio file exceeds 15MB limit"}
+            chunks.append(chunk)
+
+        audio_bytes = b"".join(chunks)
+        save_res = await save_media_file(
+            audio_bytes,
+            filename,
+            content_type="audio/mp4" if ext == ".m4a" else None,
+            metadata={"user_id": current_user.get("_id"), "alert_id": alert_id, "type": "voice_sos"}
+        )
+        audio_path = save_res["local_path"]
+        logger.info(f"AUDIO PERSISTED | Path: {audio_path} | GridFS ID: {save_res.get('gridfs_id')} | Size: {len(audio_bytes)} bytes")
 
         # ─── 1. DUPLICATE PREVENTION & INSTANT SOS CREATION ───
         # Emergency alerts MUST NEVER wait for AI processing!
@@ -471,25 +476,32 @@ async def upload_photo_evidence(
         except (ValueError, TypeError):
             lat, lng = 0.0, 0.0
 
-        os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+        # Save photo using bounded streaming (max 10MB) to both local cache and persistent MongoDB GridFS
         photo_id = str(uuid.uuid4())
-        ext = os.path.splitext(photo.filename)[1] or ".jpg"
-        photo_path = os.path.join(settings.UPLOAD_DIR, f"{photo_id}{ext}")
+        ext = os.path.splitext(photo.filename)[1].lower() or ".jpg"
+        filename = f"{photo_id}{ext}"
 
         MAX_PHOTO_BYTES = 10 * 1024 * 1024
+        chunks = []
         total_read = 0
-        with open(photo_path, "wb") as buffer:
-            while True:
-                chunk = await photo.read(65536)
-                if not chunk:
-                    break
-                total_read += len(chunk)
-                if total_read > MAX_PHOTO_BYTES:
-                    buffer.close()
-                    if os.path.exists(photo_path):
-                        os.remove(photo_path)
-                    return {"success": False, "error": "Photo evidence exceeds 10MB limit"}
-                buffer.write(chunk)
+        while True:
+            chunk = await photo.read(65536)
+            if not chunk:
+                break
+            total_read += len(chunk)
+            if total_read > MAX_PHOTO_BYTES:
+                return {"success": False, "error": "Photo evidence exceeds 10MB limit"}
+            chunks.append(chunk)
+
+        photo_bytes = b"".join(chunks)
+        save_res = await save_media_file(
+            photo_bytes,
+            filename,
+            content_type="image/jpeg",
+            metadata={"user_id": current_user["_id"], "alert_id": alert_id.strip() if alert_id else "", "type": "photo_evidence"}
+        )
+        photo_path = save_res["local_path"]
+        logger.info(f"PHOTO PERSISTED | Path: {photo_path} | GridFS ID: {save_res.get('gridfs_id')} | Size: {len(photo_bytes)} bytes")
 
         evidence_col = get_collection("photo_evidence")
 
@@ -512,6 +524,8 @@ async def upload_photo_evidence(
             "user_id": current_user["_id"],
             "alert_id": resolved_alert_id,
             "photo_path": photo_path,
+            "filename": filename,
+            "gridfs_id": save_res.get("gridfs_id"),
             "location": {"latitude": lat, "longitude": lng},
             "timestamp": datetime.utcnow()
         }
@@ -523,7 +537,8 @@ async def upload_photo_evidence(
             doc["_id"] = str(uuid.uuid4())
 
         doc["timestamp"] = doc["timestamp"].isoformat()
-        doc["url"] = f"/uploads/{os.path.basename(photo_path)}"
+        doc["url"] = f"/api/sos/evidence/photo/{doc['_id']}"
+        doc["direct_url"] = f"/uploads/{filename}"
 
         # Also push photo evidence summary directly to alert document in MongoDB
         alerts_col = get_collection("alerts")
@@ -535,6 +550,7 @@ async def upload_photo_evidence(
                         "id": doc["_id"],
                         "photo_path": photo_path,
                         "url": doc["url"],
+                        "direct_url": doc["direct_url"],
                         "timestamp": doc["timestamp"],
                         "location": doc["location"]
                     }}}
@@ -624,37 +640,37 @@ async def acknowledge_sos_alert(
 
 
 @router.get("/audio/{alert_id}")
-async def get_emergency_audio(alert_id: str):
-    """Serve emergency audio evidence."""
-    # Find the log in voice_logs or alerts safely
+async def get_emergency_audio(alert_id: str, request: Request):
+    """
+    Serve emergency audio evidence with persistent MongoDB GridFS support and
+    HTTP Range (RFC 7233) streaming for HTML5 <audio> players.
+    """
+    path = None
     voice_logs = get_collection("voice_logs")
-    log = None
     if voice_logs is not None:
         log = await voice_logs.find_one({"alert_id": alert_id})
+        if log and log.get("audio_path"):
+            path = log["audio_path"]
 
-    if not log or not log.get("audio_path"):
-        # Try finding in alerts safely
+    if not path:
         alerts_col = get_collection("alerts")
-        alert = None
         if alerts_col is not None:
             alert = await alerts_col.find_one({"_id": alert_id})
-            
-        if not alert or not alert.get("audio_file_path"):
-            raise HTTPException(status_code=404, detail="Audio evidence not found")
-        path = alert["audio_file_path"]
-    else:
-        path = log["audio_path"]
+            if alert and alert.get("audio_file_path"):
+                path = alert["audio_file_path"]
 
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="Audio file missing on server")
-    
-    from fastapi.responses import FileResponse
-    ext = os.path.splitext(path)[1].lower()
-    media_type = "audio/wav" if ext == ".wav" else "audio/m4a" if ext == ".m4a" else "audio/mpeg"
-    return FileResponse(path, media_type=media_type)
+    if not path:
+        raise HTTPException(status_code=404, detail="Audio evidence not found")
+
+    return await handle_audio_stream_response(request, path)
+
 
 @router.get("/evidence/photo/{evidence_id}")
-async def get_photo_file(evidence_id: str):
+async def get_photo_file(evidence_id: str, request: Request):
+    """
+    Serve photo evidence with persistent MongoDB GridFS support and
+    seamless fallback for archived incidents.
+    """
     from bson import ObjectId
     evidence_col = get_collection("photo_evidence")
     doc = None
@@ -668,16 +684,16 @@ async def get_photo_file(evidence_id: str):
                 doc = await evidence_col.find_one({"_id": evidence_id})
             except Exception:
                 pass
-            
-    if not doc or not doc.get("photo_path"):
-        raise HTTPException(status_code=404, detail="Photo not found")
-        
-    path = doc["photo_path"]
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="Photo file missing")
-        
-    from fastapi.responses import FileResponse
-    return FileResponse(path, media_type="image/jpeg")
+
+    path = doc.get("photo_path") if doc else evidence_id
+    fallback_title = f"SOS Snapshot #{evidence_id[:6]}"
+    return await handle_photo_stream_response(path, fallback_title=fallback_title)
+
+
+@router.get("/evidence/photo/file/{filename}")
+async def get_photo_by_filename(filename: str, request: Request):
+    """Serve photo evidence by filename with persistent GridFS lookup."""
+    return await handle_photo_stream_response(filename, fallback_title="SOS Photo Evidence")
 
 @router.get("/evidence/alert/{alert_id}")
 async def get_alert_evidence(alert_id: str, current_admin: dict = Depends(get_current_admin)):

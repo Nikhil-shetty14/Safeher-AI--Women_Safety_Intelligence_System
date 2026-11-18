@@ -83,8 +83,21 @@ app.include_router(state_dashboard.router)
 app.include_router(reports.router)
 app.include_router(admin_import.router)
 
-# Static files (audio uploads)
+# Static files & Persistent Media Streaming
 os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+
+@app.get("/uploads/{filename:path}")
+async def serve_upload_with_persistence(filename: str, request: Request):
+    """
+    Serve uploaded evidence with automatic MongoDB GridFS fallback.
+    Guarantees evidence files survive Render dyno wipes and service restarts.
+    """
+    from app.services.media_storage import handle_audio_stream_response, handle_photo_stream_response
+    clean_fn = os.path.basename(filename)
+    ext = os.path.splitext(clean_fn)[1].lower()
+    if ext in [".m4a", ".mp4", ".mp3", ".wav", ".aac", ".ogg"]:
+        return await handle_audio_stream_response(request, clean_fn)
+    return await handle_photo_stream_response(clean_fn, fallback_title="Archived SOS Snapshot")
 
 # Walk With Me routes
 from app.api.routes.walk_routes import router as walk_router

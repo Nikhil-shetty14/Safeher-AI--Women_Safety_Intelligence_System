@@ -3,6 +3,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { GoogleMap, useJsApiLoader, Marker, Polyline, InfoWindow } from "@react-google-maps/api";
 import { adminAPI } from "../api";
 import { useSocket } from "../SocketContext";
+import AudioEvidencePlayer from "./AudioEvidencePlayer";
+import PhotoEvidenceGallery from "./PhotoEvidenceGallery";
 import {
   X, ShieldAlert, User, Phone, Mail, Activity, MapPin, Navigation, Map,
   HeartPulse, Clock, FileText, CheckCircle, ChevronDown, ChevronUp,
@@ -34,7 +36,6 @@ export default function AlertIntelligencePanel({ alertId, onClose, onResolve }: 
   const [loading, setLoading] = useState(true);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [copiedScript, setCopiedScript] = useState(false);
-  const [previewPhoto, setPreviewPhoto] = useState<any>(null);
   const [showMedical, setShowMedical] = useState(true);
   const [showHistory, setShowHistory] = useState(true);
   const [showInfoWindow, setShowInfoWindow] = useState(false);
@@ -603,67 +604,21 @@ export default function AlertIntelligencePanel({ alertId, onClose, onResolve }: 
                       ? <div className="flex gap-3 items-start"><span className="text-4xl text-slate-600 leading-none font-serif">"</span><p className="pt-2 leading-relaxed italic">{data.message}</p></div>
                       : <span className="italic text-slate-500 text-sm">No text message or voice transcript provided.</span>}
                   </div>
-                  {data.audio_file_path && (
-                    <div className="bg-slate-900/40 border border-slate-800/50 rounded-lg p-3 flex flex-col gap-3">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-indigo-500/20 flex items-center justify-center text-indigo-400"><Activity size={16} /></div>
-                        <div className="text-xs text-slate-400">
-                          <span className="font-bold text-slate-300">Voice Evidence</span><br />
-                          <span className="font-mono text-[10px]">{data.audio_file_path.split(/[\/]/).pop()}</span>
-                        </div>
-                      </div>
-                      <audio controls src={data.audio_url ? (data.audio_url.startsWith("http") ? data.audio_url : baseUrl + data.audio_url) : baseUrl + "/api/sos/audio/" + data.incident_id} className="w-full h-8" />
-                    </div>
+                  {(data.audio_file_path || data.audio_url) && (
+                    <AudioEvidencePlayer
+                      src={data.audio_url ? (data.audio_url.startsWith("http") ? data.audio_url : baseUrl + data.audio_url) : baseUrl + "/api/sos/audio/" + data.incident_id}
+                      filename={data.audio_file_path ? data.audio_file_path.split(/[\/]/).pop() : undefined}
+                      incidentId={data.incident_id}
+                    />
                   )}
                 </div>
               </div>
 
               {/* Photo Evidence Gallery */}
-              <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl overflow-hidden">
-                <div className="bg-slate-900/60 px-4 py-3 border-b border-slate-700/50 flex justify-between items-center">
-                  <span className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-slate-400 font-bold"><Camera size={13} className="text-pink-400" /> Photo Evidence Gallery</span>
-                  <span className={(data.photo_evidence?.length > 0 ? "bg-pink-500/20 text-pink-400 border-pink-500/30" : "bg-slate-700/50 text-slate-400 border-slate-600/30") + " px-2 py-0.5 text-[9px] font-bold tracking-widest uppercase rounded border"}>
-                    {data.photo_evidence?.length || 0} Photos Captured
-                  </span>
-                </div>
-                {data.photo_evidence?.length > 0 ? (
-                  <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {data.photo_evidence.map((photo: any, idx: number) => {
-                      const src = resolvePhotoSrc(photo);
-                      return (
-                        <div key={idx} onClick={() => setPreviewPhoto({ ...photo, resolvedSrc: src })}
-                          className="group relative bg-slate-950 rounded-xl overflow-hidden cursor-pointer border border-slate-800/60 hover:border-pink-500/50 transition-all shadow-md"
-                          style={{ aspectRatio: "4/3" }}>
-                          <img src={src} alt={"Evidence " + (idx + 1)}
-                            className="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-300"
-                            onError={(e) => {
-                              const t = e.currentTarget;
-                              if (!t.dataset.fallback) {
-                                t.dataset.fallback = "1";
-                                const fn = photo.photo_path?.split(/[\/]/).pop();
-                                if (fn) t.src = baseUrl + "/uploads/" + fn;
-                                else t.style.display = "none";
-                              }
-                            }} />
-                          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-                          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                            <ZoomIn size={28} className="text-white drop-shadow-xl" />
-                          </div>
-                          <div className="absolute bottom-0 left-0 right-0 bg-black/70 backdrop-blur-sm px-2 py-1.5 flex justify-between items-center">
-                            <span className="text-[10px] text-slate-300 font-mono flex items-center gap-1"><Clock size={9} /> {photo.timestamp ? new Date(photo.timestamp).toLocaleTimeString() : "N/A"}</span>
-                            <span className="text-[9px] text-slate-400 font-mono">{photo.location?.latitude ? Number(photo.location.latitude).toFixed(4) + "," + Number(photo.location.longitude).toFixed(4) : "No GPS"}</span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="p-6 flex items-center gap-3 m-4 rounded-lg border border-dashed border-slate-700/50">
-                    <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center text-slate-400 shrink-0"><Camera size={18} /></div>
-                    <div className="text-xs text-slate-400"><span className="font-semibold text-slate-300">No photo evidence yet.</span><br />Captured automatically during active SOS when camera permission is granted.</div>
-                  </div>
-                )}
-              </div>
+              <PhotoEvidenceGallery
+                photos={data.photo_evidence || []}
+                baseUrl={baseUrl}
+              />
             </div>
 
             {/* RIGHT PANEL - GOOGLE MAP */}
@@ -767,35 +722,6 @@ export default function AlertIntelligencePanel({ alertId, onClose, onResolve }: 
           </div>
         </div>
       </motion.div>
-
-      {/* LIGHTBOX */}
-      <AnimatePresence>
-        {previewPhoto && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-md p-4" onClick={() => setPreviewPhoto(null)}>
-            <motion.div initial={{ opacity: 0, scale: 0.94 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.94 }}
-              className="relative max-w-5xl w-full bg-slate-900 border border-slate-700 rounded-xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
-              onClick={(e) => e.stopPropagation()}>
-              <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between shrink-0">
-                <div className="flex items-center gap-2 text-white font-bold text-sm"><Camera size={15} className="text-pink-400" /> SOS Photo Evidence Inspection</div>
-                <button onClick={() => setPreviewPhoto(null)} className="text-slate-400 hover:text-white p-1 rounded hover:bg-slate-800 transition-colors"><X size={20} /></button>
-              </div>
-              <div className="flex-1 bg-black flex items-center justify-center overflow-hidden min-h-0">
-                <img src={previewPhoto.resolvedSrc} alt="SOS Evidence" className="max-h-[70vh] w-auto max-w-full object-contain" />
-              </div>
-              <div className="p-3 bg-slate-900 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
-                <div className="flex items-center gap-4 text-slate-400">
-                  <span className="flex items-center gap-1 font-mono"><Clock size={13} className="text-indigo-400" />{previewPhoto.timestamp ? new Date(previewPhoto.timestamp).toLocaleString() : "N/A"}</span>
-                  <span className="font-mono">GPS: {previewPhoto.location?.latitude ? Number(previewPhoto.location.latitude).toFixed(6) + ", " + Number(previewPhoto.location.longitude).toFixed(6) : "N/A"}</span>
-                </div>
-                <div className="flex gap-2">
-                  <a href={previewPhoto.resolvedSrc} target="_blank" rel="noreferrer" className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded font-medium transition-colors"><ExternalLink size={13} /> Open Original</a>
-                  <a href={previewPhoto.resolvedSrc} download className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded font-medium transition-colors"><Download size={13} /> Download</a>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

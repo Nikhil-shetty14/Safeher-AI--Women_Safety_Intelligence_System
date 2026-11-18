@@ -432,10 +432,15 @@ export default function SOSScreen({ navigation, route }: any) {
       return;
     }
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.5 });
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.7,
+        skipProcessing: false,
+        shutterSound: false,
+      });
       if (!photo?.uri) return;
       photoCountRef.current += 1;
       setCapturedPhotosCount(photoCountRef.current);
+      console.log(`[SOS Photo] Captured snapshot #${photoCountRef.current}: ${photo.uri}`);
 
       const formData = new FormData();
       const filename = photo.uri.split('/').pop() || `evidence_${Date.now()}.jpg`;
@@ -513,7 +518,7 @@ export default function SOSScreen({ navigation, route }: any) {
           photoIntervalRef.current = setInterval(() => {
             capturePhoto(alertId);
           }, 8000);
-        }, 500);
+        }, 1500);
       }
 
       // Socket Live Dispatch
@@ -718,14 +723,15 @@ export default function SOSScreen({ navigation, route }: any) {
     <View style={s.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
 
-      {/* Hidden Camera for evidence capture */}
+      {/* Covert Evidence Camera (Full sensor area behind UI for optimal auto-exposure) */}
       {cameraPermission?.granted && (
         <View style={s.hiddenCamera} pointerEvents="none">
           <CameraView
             ref={cameraRef}
-            style={{ flex: 1 }}
+            style={StyleSheet.absoluteFill}
             facing="back"
             mute
+            animateShutter={false}
             onCameraReady={() => { isCameraReadyRef.current = true; }}
           />
         </View>
@@ -1416,12 +1422,12 @@ const s = StyleSheet.create({
   },
   hiddenCamera: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 4,
-    height: 4,
-    opacity: 0.05,
-    overflow: 'hidden',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    zIndex: -1,
+    opacity: 0.99,
   },
   header: {
     flexDirection: 'row',

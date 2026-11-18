@@ -94,14 +94,18 @@ async def submit_complaint(
         media_urls = []
         os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
         if files:
+            from app.services.media_storage import save_media_file
             for file in files:
                 if file.filename:
                     ext = os.path.splitext(file.filename)[1]
                     file_id = str(uuid.uuid4())
                     filename = f"cmp_{file_id}{ext}"
-                    filepath = os.path.join(settings.UPLOAD_DIR, filename)
-                    with open(filepath, "wb") as buffer:
-                        shutil.copyfileobj(file.file, buffer)
+                    file_bytes = await file.read()
+                    await save_media_file(
+                        file_bytes,
+                        filename,
+                        metadata={"complaint_id": complaint_id, "user_id": current_user["_id"], "type": "complaint_evidence"}
+                    )
                     media_urls.append(f"/uploads/{filename}")
 
         loc = None

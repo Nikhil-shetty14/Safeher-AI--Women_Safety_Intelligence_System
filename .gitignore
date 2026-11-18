@@ -24,6 +24,9 @@ env/
 .env
 .env.local
 
+# Media uploads
+uploads/
+
 # IDEs
 .vscode/
 .idea/

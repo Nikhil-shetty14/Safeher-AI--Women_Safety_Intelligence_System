@@ -834,10 +834,13 @@ async def get_alert_intelligence(alert_id: str, current_admin: dict = Depends(ge
             evidence_docs = await evidence_cursor.to_list(length=50)
             for doc in evidence_docs:
                 filename = os.path.basename(doc.get("photo_path", ""))
+                ev_id = str(doc["_id"])
                 photo_evidence.append({
-                    "id": str(doc["_id"]),
+                    "id": ev_id,
                     "photo_path": doc.get("photo_path"),
-                    "url": f"/uploads/{filename}" if filename else f"/api/sos/evidence/photo/{str(doc['_id'])}",
+                    "url": f"/api/sos/evidence/photo/{ev_id}",
+                    "direct_url": f"/uploads/{filename}" if filename else None,
+                    "filename": filename,
                     "timestamp": safe_ts(doc.get("timestamp")),
                     "location": doc.get("location", {})
                 })
@@ -886,11 +889,9 @@ async def get_alert_intelligence(alert_id: str, current_admin: dict = Depends(ge
                     f"Proceed to sector coordinates for immediate intercept."
                 )
 
-        # Format the data cleanly
+        # Format media paths & range-compatible streaming endpoints
         audio_path = alert.get("audio_file_path")
-        audio_url = None
-        if audio_path:
-            audio_url = f"/uploads/{os.path.basename(audio_path)}"
+        audio_url = f"/api/sos/audio/{alert['_id']}" if audio_path else None
 
         intel = {
             "incident_id": alert["_id"],

@@ -440,7 +440,12 @@ function AIIntelligenceCenterContent() {
                     </div>
                     <p style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.5, margin: "0 0 10px" }}>{sos.tactical_summary}</p>
                     {sos.source === 'voice' && sos.audio_url && (
-                      <audio controls style={{ width: "100%", marginTop: 4 }} src={sos.audio_url} />
+                      <audio
+                        controls
+                        preload="metadata"
+                        style={{ width: "100%", marginTop: 4, height: 32 }}
+                        src={sos.audio_url.startsWith("http") ? sos.audio_url : `${import.meta.env.VITE_API_BASE_URL || "http://localhost:8000"}${sos.audio_url}`}
+                      />
                     )}
                     <div style={{
                       display: "flex", justifyContent: "space-between", alignItems: "center",
