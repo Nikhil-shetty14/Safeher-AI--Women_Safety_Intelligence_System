@@ -21,11 +21,18 @@ export default function PhotoEvidenceGallery({ photos, baseUrl }: PhotoEvidenceG
   const [zoomLevel, setZoomLevel] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [copied, setCopied] = useState(false);
-  const [imageStates, setImageStates] = useState<{ [key: string]: { loaded: boolean; error: boolean } }>({});
+  const [imageStates, setImageStates] = useState<{ [key: string]: { loaded: boolean; error: boolean; triedFallback?: boolean } }>({});
 
-  const resolvePhotoSrc = (photo: PhotoItem) => {
+  const resolvePhotoSrc = (photo: PhotoItem, useFallback: boolean = false) => {
     if (!photo) return "";
-    const rawUrl = photo.url || (photo.id ? `/api/sos/evidence/photo/${photo.id}` : "");
+    let rawUrl = "";
+    if (useFallback && (photo.direct_url || photo.photo_path)) {
+      const fn = (photo.direct_url || photo.photo_path || "").split(/[\/\\]/).pop();
+      rawUrl = fn ? `/uploads/${fn}` : "";
+    }
+    if (!rawUrl) {
+      rawUrl = photo.url || (photo.id ? `/api/sos/evidence/photo/${photo.id}` : "");
+    }
     if (!rawUrl) return "";
     return rawUrl.startsWith("http") ? rawUrl : baseUrl + rawUrl;
   };
@@ -69,8 +76,8 @@ export default function PhotoEvidenceGallery({ photos, baseUrl }: PhotoEvidenceG
       {photos && photos.length > 0 ? (
         <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
           {photos.map((photo, idx) => {
-            const src = resolvePhotoSrc(photo);
             const state = imageStates[photo.id] || { loaded: false, error: false };
+            const src = resolvePhotoSrc(photo, !!state.triedFallback);
 
             return (
               <div
@@ -103,10 +110,21 @@ export default function PhotoEvidenceGallery({ photos, baseUrl }: PhotoEvidenceG
                       state.loaded ? "opacity-95 group-hover:opacity-100 group-hover:scale-105" : "opacity-0"
                     }`}
                     onLoad={() => {
-                      setImageStates((prev) => ({ ...prev, [photo.id]: { loaded: true, error: false } }));
+                      setImageStates((prev) => ({ ...prev, [photo.id]: { ...prev[photo.id], loaded: true, error: false } }));
                     }}
                     onError={() => {
-                      setImageStates((prev) => ({ ...prev, [photo.id]: { loaded: false, error: true } }));
+                      const cur = imageStates[photo.id];
+                      if (!cur?.triedFallback && (photo.direct_url || photo.photo_path)) {
+                        setImageStates((prev) => ({
+                          ...prev,
+                          [photo.id]: { loaded: false, error: false, triedFallback: true },
+                        }));
+                      } else {
+                        setImageStates((prev) => ({
+                          ...prev,
+                          [photo.id]: { loaded: false, error: true, triedFallback: true },
+                        }));
+                      }
                     }}
                   />
                 )}
@@ -219,7 +237,7 @@ export default function PhotoEvidenceGallery({ photos, baseUrl }: PhotoEvidenceG
               {/* Image Preview Canvas */}
               <div className="flex-1 bg-black/95 flex items-center justify-center overflow-auto p-4 min-h-[350px] max-h-[68vh]">
                 <img
-                  src={resolvePhotoSrc(selectedPhoto)}
+                  src={resolvePhotoSrc(selectedPhoto, !!imageStates[selectedPhoto.id]?.triedFallback)}
                   alt="High-resolution Evidence"
                   style={{
                     transform: `scale(${zoomLevel}) rotate(${rotation}deg)`,

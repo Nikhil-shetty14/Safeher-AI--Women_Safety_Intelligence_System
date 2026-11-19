@@ -11,12 +11,15 @@ os.chdir(backend_dir)
 os.environ.setdefault("MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "safeher_mpl"))
 os.makedirs(os.environ["MPLCONFIGDIR"], exist_ok=True)
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(backend_dir, ".env"))
+from app.core.config import settings
 from app.main import socket_app
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    is_debug = os.environ.get("DEBUG", "False").lower() in ("true", "1")
+    port = int(os.environ.get("PORT", settings.PORT if hasattr(settings, "PORT") else 8000))
+    is_debug = bool(settings.DEBUG)
     uvicorn.run(
         "app.main:socket_app",
         host="0.0.0.0",

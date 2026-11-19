@@ -788,6 +788,7 @@ async def get_photo_file(evidence_id: str, request: Request):
     seamless fallback for archived incidents.
     """
     from bson import ObjectId
+    from app.services.media_storage import _normalize_filename
     evidence_col = get_collection("photo_evidence")
     doc = None
     if evidence_col is not None:
@@ -800,8 +801,32 @@ async def get_photo_file(evidence_id: str, request: Request):
                 doc = await evidence_col.find_one({"_id": evidence_id})
             except Exception:
                 pass
+        if not doc:
+            try:
+                doc = await evidence_col.find_one({"filename": evidence_id})
+            except Exception:
+                pass
 
-    path = doc.get("photo_path") if doc else evidence_id
+    if not doc:
+        alerts_col = get_collection("alerts")
+        if alerts_col is not None:
+            try:
+                alert = await alerts_col.find_one({"photo_evidence.id": evidence_id})
+                if alert:
+                    for pe in alert.get("photo_evidence", []):
+                        if pe.get("id") == evidence_id or pe.get("filename") == evidence_id:
+                            doc = pe
+                            break
+            except Exception:
+                pass
+
+    path = None
+    if doc:
+        path = doc.get("filename") or _normalize_filename(doc.get("photo_path", "")) or doc.get("gridfs_id")
+    
+    if not path:
+        path = evidence_id
+
     fallback_title = f"SOS Snapshot #{evidence_id[:6]}"
     return await handle_photo_stream_response(path, fallback_title=fallback_title)
 

@@ -12,10 +12,10 @@ def _create_motor_client() -> AsyncIOMotorClient:
         maxPoolSize=10,
         minPoolSize=1,
         maxIdleTimeMS=30000,
-        connectTimeoutMS=5000,
-        socketTimeoutMS=10000,
-        serverSelectionTimeoutMS=5000,
-        waitQueueTimeoutMS=5000,
+        connectTimeoutMS=10000,
+        socketTimeoutMS=15000,
+        serverSelectionTimeoutMS=15000,
+        waitQueueTimeoutMS=10000,
         tlsAllowInvalidCertificates=True,
     )
 
