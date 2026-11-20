@@ -85,8 +85,20 @@ console.log('SafeHer active API host:', _activeBaseUrl, '(devIp:', devIp, ', pla
 
 const api = axios.create({
   baseURL: _activeBaseUrl,
-  timeout: 30000,
+  timeout: 60000,
 });
+
+// Proactively wake up backend from Render cold sleep on app launch
+export const warmupBackend = async () => {
+  try {
+    console.log(`[API Warmup] Pinging ${_activeBaseUrl}/health to wake up cloud server...`);
+    await axios.get(`${_activeBaseUrl}/health`, { timeout: 15000 });
+    console.log(`[API Warmup] Backend is warm and responsive!`);
+  } catch (_) {}
+};
+
+// Fire warm-up in background immediately
+warmupBackend();
 
 // ─── Auth State Sync ──────────────────────────────────
 // Allows AuthContext to register its logout callback so the 401 interceptor
@@ -121,12 +133,16 @@ api.interceptors.response.use(
     const config = err.config;
     console.error(`[API Error] ${config?.method?.toUpperCase()} ${config?.url} | Status: ${err.response?.status} | Message: ${err.message}`);
     
-    // Retry once on the SAME host with backoff if network failure or timeout
-    if (!err.response && config && !config._retryCount) {
-      config._retryCount = 1;
-      console.warn(`[API Retry] Temporary network hiccup for ${config.url}. Retrying in 1.5s...`);
-      await new Promise(r => setTimeout(r, 1500));
-      return api(config);
+    // Progressive retry on network failure or timeout (essential for Render cold starts)
+    if (!err.response && config) {
+      const retryCount = (config._retryCount || 0) + 1;
+      if (retryCount <= 2) {
+        config._retryCount = retryCount;
+        const delayMs = retryCount === 1 ? 2500 : 5000;
+        console.warn(`[API Retry ${retryCount}/2] Server cold-start or network hiccup for ${config.url}. Retrying in ${delayMs / 1000}s...`);
+        await new Promise(r => setTimeout(r, delayMs));
+        return api(config);
+      }
     }
 
     if (err.response?.status === 401) {

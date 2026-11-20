@@ -75,10 +75,10 @@ export default function LoginScreen({ navigation }: any) {
       const message =
         err?.response?.data?.detail ||
         err?.response?.data?.message ||
-        (err?.message?.includes('Network Error')
-          ? 'Unable to connect to safety server. Please verify your connection.'
+        (err?.message?.includes('Network Error') || err?.code === 'ECONNABORTED'
+          ? 'Cloud safety server was waking up from idle mode. Please tap Sign In again.'
           : 'Invalid mobile number or password. Please try again.');
-      Alert.alert('Sign In Failed', message);
+      Alert.alert('Sign In', message);
     } finally {
       setLoading(false);
     }
