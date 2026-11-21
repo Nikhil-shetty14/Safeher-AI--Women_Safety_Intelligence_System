@@ -40,7 +40,8 @@ async def create_user(user_data: UserCreate) -> dict:
             "shake_detection": False,
             "voice_triggered_sos": False,
             "hidden_sos_mode": False,
-            "live_tracking_enabled": True
+            "live_tracking_enabled": True,
+            "custom_voice_phrase": "Help me"
         },
         "notification_settings": {
             "sms_alerts": True,
@@ -147,7 +148,8 @@ def format_user_response(user: dict) -> dict:
             "shake_detection": False,
             "voice_triggered_sos": False,
             "hidden_sos_mode": False,
-            "live_tracking_enabled": True
+            "live_tracking_enabled": True,
+            "custom_voice_phrase": "Help me"
         }),
         "notification_settings": user.get("notification_settings", {
             "sms_alerts": True,

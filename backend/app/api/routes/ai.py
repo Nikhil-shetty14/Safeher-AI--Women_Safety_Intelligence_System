@@ -148,7 +148,15 @@ async def analyze_voice(
         "gridfs_id": gridfs_id
     }
     loc_dict = {"latitude": lat, "longitude": lng}
-    intel = await analyze_audio_intelligence(transcript, voice_result, loc_dict, audio_meta)
+    user_prefs = current_user.get("safety_preferences", {}) if isinstance(current_user, dict) else {}
+    custom_phrase = user_prefs.get("custom_voice_phrase", "Help me") if user_prefs else "Help me"
+    intel = await analyze_audio_intelligence(
+        transcript,
+        voice_result,
+        loc_dict,
+        audio_meta,
+        custom_trigger_phrase=custom_phrase
+    )
 
     # 4. Threshold & Emergency Arbitration
     auto_threshold = getattr(settings, "AI_VOICE_AUTO_SOS_THRESHOLD", 75)

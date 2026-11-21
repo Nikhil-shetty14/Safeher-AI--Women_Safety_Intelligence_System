@@ -916,7 +916,9 @@ export default function SOSScreen({ navigation, route }: any) {
                   </View>
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={s.voiceListeningTitle}>🎙️ AI Voice Distress Listening...</Text>
-                    <Text style={s.voiceListeningSub}>Speak your emergency situation or call for help</Text>
+                    <Text style={s.voiceListeningSub}>
+                      Speak "{user?.safety_preferences?.custom_voice_phrase || 'Help me'}", "Bachao", or your distress situation
+                    </Text>
                   </View>
                 </View>
                 <View style={s.voiceTimerRow}>

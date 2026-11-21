@@ -365,7 +365,12 @@ BENIGN_CONTEXT_PATTERNS = [
 ]
 
 
-def evaluate_keyword_and_acoustic_threat(transcript: str, acoustic_data: dict, location: dict = None) -> dict:
+def evaluate_keyword_and_acoustic_threat(
+    transcript: str,
+    acoustic_data: dict,
+    location: dict = None,
+    custom_trigger_phrase: str = None
+) -> dict:
     """
     Context-aware threat evaluation combining speech transcript semantics,
     distress phrase matching, acoustic signal telemetry, and false-positive suppression.
@@ -373,8 +378,13 @@ def evaluate_keyword_and_acoustic_threat(transcript: str, acoustic_data: dict, l
     text = (transcript or "").lower().strip()
     acoustic_data = acoustic_data or {}
     
-    # 1. Match critical distress patterns
+    # 1. Match critical distress patterns (including custom configured user phrase)
     critical_matches = []
+    if custom_trigger_phrase and custom_trigger_phrase.strip():
+        cp = custom_trigger_phrase.strip().lower()
+        if re.search(r'\b' + re.escape(cp) + r'\b', text):
+            critical_matches.append(cp)
+
     for pat in CRITICAL_DISTRESS_PATTERNS:
         match = re.search(pat, text)
         if match:
@@ -631,13 +641,21 @@ def generate_ai_decision_log(
     }
 
 
-async def analyze_audio_intelligence(transcript: str, acoustic_data: dict, location: dict = None, audio_meta: dict = None) -> dict:
+async def analyze_audio_intelligence(
+    transcript: str,
+    acoustic_data: dict,
+    location: dict = None,
+    audio_meta: dict = None,
+    custom_trigger_phrase: str = None
+) -> dict:
     """
     Perform deep intelligence analysis on transcribed emergency audio and acoustic metadata.
     Tries Ollama/Phi-3 LLM with quick timeout (up to 3.5s), and seamlessly falls back
     to our contextual-acoustic evaluation so emergency alerts NEVER crash or stall.
     """
-    baseline_intel = evaluate_keyword_and_acoustic_threat(transcript, acoustic_data, location)
+    baseline_intel = evaluate_keyword_and_acoustic_threat(
+        transcript, acoustic_data, location, custom_trigger_phrase=custom_trigger_phrase
+    )
 
     # If already clearly benign, return immediately without waiting for slow LLMs
     if baseline_intel.get("intent") in ["BENIGN_CONVERSATION", "AMBIENT_NOISE"]:

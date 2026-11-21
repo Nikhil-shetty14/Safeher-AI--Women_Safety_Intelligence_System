@@ -19,6 +19,7 @@ class SafetyPreferences(BaseModel):
     voice_triggered_sos: bool = False
     hidden_sos_mode: bool = False
     live_tracking_enabled: bool = True
+    custom_voice_phrase: Optional[str] = "Help me"
 
 
 class NotificationSettings(BaseModel):

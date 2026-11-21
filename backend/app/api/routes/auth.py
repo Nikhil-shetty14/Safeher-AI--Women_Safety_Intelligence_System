@@ -253,7 +253,8 @@ async def verify_otp_endpoint(payload: VerifyOTPRequest):
                 "shake_detection": False,
                 "voice_triggered_sos": False,
                 "hidden_sos_mode": False,
-                "live_tracking_enabled": True
+                "live_tracking_enabled": True,
+                "custom_voice_phrase": "Help me"
             },
             "notification_settings": {
                 "sms_alerts": True,

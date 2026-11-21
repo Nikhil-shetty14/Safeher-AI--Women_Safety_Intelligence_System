@@ -124,9 +124,15 @@ export default function ProfileScreen({ navigation }: any) {
     shake_detection: false,
     shake_sensitivity: 2.8,
     voice_triggered_sos: false,
+    custom_voice_phrase: 'Help me',
     hidden_sos_mode: false,
     live_tracking_enabled: true,
   });
+
+  const [customVoicePhrase, setCustomVoicePhrase] = useState(
+    user?.safety_preferences?.custom_voice_phrase || 'Help me'
+  );
+  const [isSavingVoicePhrase, setIsSavingVoicePhrase] = useState(false);
 
   const [notifSettings, setNotifSettings] = useState(user?.notification_settings || {
     sms_alerts: true,
@@ -155,11 +161,35 @@ export default function ProfileScreen({ navigation }: any) {
         medical_conditions: userData.medical_conditions || '',
         allergies: userData.allergies || '',
       });
-      setSafetyPrefs(userData.safety_preferences);
+      if (userData.safety_preferences) {
+        setSafetyPrefs(userData.safety_preferences);
+        setCustomVoicePhrase(userData.safety_preferences.custom_voice_phrase || 'Help me');
+      }
       setNotifSettings(userData.notification_settings);
       setSecuritySettings(userData.security_settings);
     } catch (error) {
       console.error('Error fetching profile:', error);
+    }
+  };
+
+  const saveCustomVoicePhrase = async (phraseToSave?: string) => {
+    const val = (phraseToSave !== undefined ? phraseToSave : customVoicePhrase).trim();
+    if (!val) {
+      Alert.alert('Invalid Phrase', 'Emergency voice trigger phrase cannot be empty.');
+      return;
+    }
+    const newPrefs = { ...safetyPrefs, custom_voice_phrase: val };
+    setSafetyPrefs(newPrefs);
+    setCustomVoicePhrase(val);
+    updateUser({ safety_preferences: newPrefs });
+    setIsSavingVoicePhrase(true);
+    try {
+      await profileAPI.updateSafety(newPrefs);
+      Alert.alert('Trigger Phrase Saved', `Your AI Voice trigger phrase "${val}" is active and configured.`);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save safety preferences.');
+    } finally {
+      setIsSavingVoicePhrase(false);
     }
   };
 
@@ -434,6 +464,68 @@ export default function ProfileScreen({ navigation }: any) {
             toggleVal={safetyPrefs.voice_triggered_sos} 
             onToggle={() => toggleSafetyPref('voice_triggered_sos')} 
           />
+          {safetyPrefs.voice_triggered_sos && (
+            <View style={styles.voiceTriggerContainer}>
+              <View style={styles.voiceTriggerHeader}>
+                <Ionicons name="sparkles" size={16} color={Colors.primary} />
+                <Text style={styles.voiceTriggerTitle}>AI Distress Voice Trigger Words</Text>
+              </View>
+              <Text style={styles.voiceTriggerDesc}>
+                When Voice SOS is active, speaking any of these emergency words or your custom phrase initiates automatic threat confirmation and alert dispatch:
+              </Text>
+
+              {/* Universal AI Distress Keywords */}
+              <View style={styles.keywordChipsWrap}>
+                {['Help me', 'Save me', "I'm in danger", 'Bachao', 'Madad karo', 'Emergency'].map((kw) => (
+                  <TouchableOpacity
+                    key={kw}
+                    style={[
+                      styles.keywordChip,
+                      customVoicePhrase.toLowerCase() === kw.toLowerCase() && styles.keywordChipActive,
+                    ]}
+                    onPress={() => {
+                      setCustomVoicePhrase(kw);
+                      saveCustomVoicePhrase(kw);
+                    }}
+                  >
+                    <Text
+                      style={[
+                        styles.keywordChipText,
+                        customVoicePhrase.toLowerCase() === kw.toLowerCase() && styles.keywordChipTextActive,
+                      ]}
+                    >
+                      {kw}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Custom Codeword / Phrase Input */}
+              <Text style={styles.customPhraseLabel}>Custom Emergency Codeword / Phrase:</Text>
+              <View style={styles.customPhraseInputRow}>
+                <TextInput
+                  style={styles.customPhraseInput}
+                  value={customVoicePhrase}
+                  onChangeText={setCustomVoicePhrase}
+                  placeholder="e.g. Help me or Code Red"
+                  placeholderTextColor={Colors.textMuted}
+                  autoCapitalize="sentences"
+                />
+                <TouchableOpacity
+                  style={[styles.savePhraseBtn, isSavingVoicePhrase && { opacity: 0.7 }]}
+                  onPress={() => saveCustomVoicePhrase()}
+                  disabled={isSavingVoicePhrase}
+                >
+                  <Text style={styles.savePhraseBtnText}>
+                    {isSavingVoicePhrase ? 'Saving...' : 'Save'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.voiceTipText}>
+                Stored in your user safety profile. Trigger Voice SOS from the Home or SOS screen, or shake your phone for hands-free detection.
+              </Text>
+            </View>
+          )}
           <SettingRow 
             icon="eye-off-outline" 
             label="Hidden SOS Mode" 
@@ -715,4 +807,94 @@ const styles = StyleSheet.create({
   sensitivityBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
   sensitivityBtnText: { color: Colors.textMuted, fontWeight: '700', fontSize: 12 },
   sensitivityBtnTextActive: { color: Colors.white },
+  voiceTriggerContainer: {
+    padding: Spacing.md,
+    backgroundColor: Colors.backgroundSecondary + '80',
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.cardBorder,
+    gap: 8,
+  },
+  voiceTriggerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  voiceTriggerTitle: {
+    fontSize: Typography.fontSizeSM,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  voiceTriggerDesc: {
+    fontSize: Typography.fontSizeXS,
+    color: Colors.textMuted,
+    lineHeight: 16,
+  },
+  keywordChipsWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginVertical: 4,
+  },
+  keywordChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.full,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+  },
+  keywordChipActive: {
+    backgroundColor: Colors.primary + '25',
+    borderColor: Colors.primary,
+  },
+  keywordChipText: {
+    fontSize: 11,
+    color: Colors.textMuted,
+    fontWeight: '600',
+  },
+  keywordChipTextActive: {
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  customPhraseLabel: {
+    fontSize: Typography.fontSizeXS,
+    color: Colors.textSecondary,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  customPhraseInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+    alignItems: 'center',
+  },
+  customPhraseInput: {
+    flex: 1,
+    backgroundColor: Colors.card,
+    borderWidth: 1,
+    borderColor: Colors.cardBorder,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: Typography.fontSizeSM,
+    color: Colors.textPrimary,
+  },
+  savePhraseBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  savePhraseBtnText: {
+    color: Colors.white,
+    fontWeight: '700',
+    fontSize: Typography.fontSizeSM,
+  },
+  voiceTipText: {
+    fontSize: 10,
+    color: Colors.textMuted,
+    fontStyle: 'italic',
+    marginTop: 2,
+  },
 });
